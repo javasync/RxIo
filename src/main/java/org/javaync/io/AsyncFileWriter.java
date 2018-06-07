@@ -60,14 +60,10 @@ public class AsyncFileWriter extends AbstractAsyncFile {
     }
 
     public CompletableFuture<Integer> writeLine(String str) {
-        try {
-            return write(str + System.lineSeparator());
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        return write(str + System.lineSeparator());
     }
 
-    public CompletableFuture<Integer> write(String str) throws IOException {
+    public CompletableFuture<Integer> write(String str) {
         byte[] data = (str).getBytes();
         pos = pos.thenCompose(index -> {
             CompletableFuture<Integer> size = write(asyncFile, wrap(data), index);

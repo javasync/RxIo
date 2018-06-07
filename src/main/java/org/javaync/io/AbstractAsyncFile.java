@@ -65,9 +65,9 @@ public class AbstractAsyncFile implements AutoCloseable {
     @Override
     public void close() throws IOException {
         if(asyncFile != null) {
-            pos.whenComplete((res, ex) -> {
-               closeAfc(asyncFile);
-            });
+            pos.whenComplete((res, ex) ->
+               closeAfc(asyncFile)
+            );
         }
     }
 

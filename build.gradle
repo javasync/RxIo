@@ -9,6 +9,8 @@
 plugins {
     // Apply the java-library plugin to add support for Java Library
     id 'java-library'
+    id 'jacoco'
+    id "org.sonarqube" version "2.6"
 }
 
 dependencies {

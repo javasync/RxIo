@@ -40,6 +40,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 import java.util.Spliterator;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.regex.Pattern;
 
 import static java.lang.System.lineSeparator;
@@ -101,40 +102,48 @@ public class AsyncFileReader extends AbstractAsyncFile {
 
     CompletableFuture<byte[]> lines(int position, ByteBuffer buffer, StringBuilder res, Subscriber<? super String> sub) {
         return readBytes(asyncFile, buffer, position)
-                .thenCompose((byte[] bytes) -> {
-                    if(bytes.length < 0) {
-                        // Finishes reading file!
-                        sub.onComplete();
-                        return completedFuture(bytes);
-                    }
-                    res.append(new String(bytes, UTF_8));
-                    if(res.indexOf(lineSeparator()) < 0 && bytes.length >= buffer.capacity()) {
-                        // There is NO new line in res string. Thus proceed to read next chunk of bytes.
-                        return lines(position + bytes.length, buffer.clear(), res, sub);
-                    }
-                    /**
-                     * Notifies subscriber with a line
-                     */
-                    Iterator<String> iter = NEWLINE.splitAsStream(res).iterator();
-                    String line = iter.next();
-                    sub.onNext(line);
-                    /**
-                     * Call lines() recursively for the rest of the string
-                     */
-                    Spliterator<String> rest = spliteratorUnknownSize(iter, Spliterator.ORDERED);
-                    String restString = stream(rest, false).collect(joining(lineSeparator()));
-                    if(bytes.length < buffer.capacity()) {
-                        /**
-                         * Already reaches the end of the file
-                         */
-                        if(restString != null && !restString.equals(""))
-                            sub.onNext(restString);
-                        sub.onComplete();
-                        return completedFuture(bytes);
-                    }
-                    else
-                        return lines(position + bytes.length, buffer.clear(), new StringBuilder(restString), sub);
-                });
+                .thenCompose(bytes -> parseByLine(bytes, position, buffer, res, sub));
+    }
+
+    private CompletableFuture<byte[]> parseByLine(
+            byte[] bytes,
+            int position,
+            ByteBuffer buffer,
+            StringBuilder res,
+            Subscriber<? super String> sub)
+    {
+        if(bytes.length == 0) {
+            // Finishes reading file!
+            sub.onComplete();
+            return completedFuture(bytes);
+        }
+        res.append(new String(bytes, UTF_8));
+        if(res.indexOf(lineSeparator()) < 0 && bytes.length >= buffer.capacity()) {
+            // There is NO new line in res string. Thus proceed to read next chunk of bytes.
+            return lines(position + bytes.length, buffer.clear(), res, sub);
+        }
+        /**
+         * Notifies subscriber with a line
+         */
+        Iterator<String> iter = NEWLINE.splitAsStream(res).iterator();
+        String line = iter.next();
+        sub.onNext(line);
+        /**
+         * Call lines() recursively for the rest of the string
+         */
+        Spliterator<String> rest = spliteratorUnknownSize(iter, Spliterator.ORDERED);
+        String restString = stream(rest, false).collect(joining(lineSeparator()));
+        if(bytes.length < buffer.capacity()) {
+            /**
+             * Already reaches the end of the file
+             */
+            if(restString != null && !restString.equals(""))
+                sub.onNext(restString);
+            sub.onComplete();
+            return completedFuture(bytes);
+        }
+        else
+            return lines(position + bytes.length, buffer.clear(), new StringBuilder(restString), sub);
     }
 
     static CompletableFuture<byte[]> readBytes(
@@ -182,7 +191,7 @@ public class AsyncFileReader extends AbstractAsyncFile {
          * a continuation to close the asyncFile.
          */
         pos = readAllBytes(0, buffer, out);
-        return pos.thenApply(__ -> out.toByteArray());
+        return pos.thenApply(position -> out.toByteArray());
 
     }
 
