@@ -26,7 +26,7 @@
 package org.javasync.io.test;
 
 import org.javaync.io.AsyncFileReader;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
@@ -39,17 +39,15 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Flow;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.lang.System.lineSeparator;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 
 public class AsyncFileReaderTest {
 
@@ -72,7 +70,7 @@ public class AsyncFileReaderTest {
                     .doOnComplete(latch::countDown)
                     .subscribe();
             latch.await();
-            assertFalse(iter.hasNext(), () -> iter.next() + " was not retrieved by lines subscriber!!");
+            assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
         }finally {
             delete(Paths.get(PATH));
         }
@@ -108,7 +106,7 @@ public class AsyncFileReaderTest {
                         }
                     });
             latch.await();
-            assertFalse(iter.hasNext(), () -> iter.next() + " was not retrieved by lines subscriber!!");
+            assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
         }finally {
             delete(Paths.get(PATH));
         }

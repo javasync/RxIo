@@ -26,7 +26,7 @@
 package org.javasync.io.test;
 
 import org.javaync.io.AsyncFileWriter;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -37,8 +37,8 @@ import java.util.concurrent.CompletableFuture;
 
 import static java.nio.file.Files.delete;
 import static java.nio.file.Files.lines;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public class AsyncFileWriterTest {
 
