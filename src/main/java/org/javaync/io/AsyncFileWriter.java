@@ -25,6 +25,8 @@
 
 package org.javaync.io;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
@@ -34,19 +36,30 @@ import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 
 import static java.nio.ByteBuffer.wrap;
+import static java.nio.channels.AsynchronousFileChannel.open;
 
-public class AsyncFileWriter extends AbstractAsyncFile {
+/**
+ * Asynchronous non-blocking write operations with a CompletableFuture based API.
+ * These operations use an underlying AsynchronousFileChannel.
+ * All methods are asynchronous including the close() which chains a continuation
+ * on last resulting write CompletableFuture to close the AsyncFileChannel on completion.
+ * All write methods return a CompletableFuture of an integer with the final file index
+ * after the completion of corresponding write operation.
+ */
+public class AsyncFileWriter implements AutoCloseable{
+
+    final AsynchronousFileChannel asyncFile;
+    /**
+     * File position after last write operation completion.
+     */
+    CompletableFuture<Integer> pos = CompletableFuture.completedFuture(0);
 
     public AsyncFileWriter(AsynchronousFileChannel asyncFile) {
-        super(asyncFile);
+        this.asyncFile = asyncFile;
     }
 
     public AsyncFileWriter(Path file, StandardOpenOption...options) {
-        super(file, options);
-    }
-
-    public AsyncFileWriter(Path file) {
-        this(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        this(openFileChannel(file, options));
     }
 
     public AsyncFileWriter(String path, StandardOpenOption...options) {
@@ -54,21 +67,54 @@ public class AsyncFileWriter extends AbstractAsyncFile {
     }
 
     public AsyncFileWriter(String path) {
-        this(Paths.get(path), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        this(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
+    /**
+     * Writes the given String appended with a newline separator
+     * and returns a CompletableFuture of the final file index
+     * after the completion of the corresponding write operation.
+     */
     public CompletableFuture<Integer> writeLine(String str) {
         return write(str + System.lineSeparator());
     }
 
+    /**
+     * Writes the given String and returns a CompletableFuture of
+     * the final file index after the completion of the corresponding
+     * write operation.
+     */
     public CompletableFuture<Integer> write(String str) {
-        byte[] data = (str).getBytes();
+        return write(str.getBytes());
+    }
+
+    /**
+     * Writes the given byte array and returns a CompletableFuture of
+     * the final file index after the completion of the corresponding
+     * write operation.
+     */
+    public CompletableFuture<Integer> write(byte[] bytes) {
+        return write(wrap(bytes));
+    }
+
+    /**
+     * Writes the given byte buffer and returns a CompletableFuture of
+     * the final file index after the completion of the corresponding
+     * write operation.
+     */
+    public CompletableFuture<Integer> write(ByteBuffer bytes) {
+        /**
+         * Wee need to update pos field to keep track.
+         * The pos field is used on close() method, which chains
+         * a continuation to close the AsyncFileChannel.
+         */
         pos = pos.thenCompose(index -> {
-            CompletableFuture<Integer> size = write(asyncFile, wrap(data), index);
+            CompletableFuture<Integer> size = write(asyncFile, bytes, index);
             return size.thenApply(length -> length + index);
         });
         return pos;
     }
+
 
     static CompletableFuture<Integer> write(
             AsynchronousFileChannel asyncFile,
@@ -88,5 +134,36 @@ public class AsyncFileWriter extends AbstractAsyncFile {
             }
         });
         return promise;
+    }
+
+    /**
+     * Asynchronous close operation.
+     * Chains a continuation on CompletableFuture resulting from last write operation,
+     * which closes the AsyncFileChannel on completion.
+     * @throws IOException
+     */
+    @Override
+    public void close() throws IOException {
+        if(asyncFile != null) {
+            pos.whenComplete((res, ex) ->
+                    closeAfc(asyncFile)
+            );
+        }
+    }
+
+    private static void closeAfc(AsynchronousFileChannel asyncFile) {
+        try {
+            asyncFile.close();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
+        try {
+            return open(file, options);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }
