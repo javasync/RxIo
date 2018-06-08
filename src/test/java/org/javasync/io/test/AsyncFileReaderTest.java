@@ -56,7 +56,6 @@ public class AsyncFileReaderTest {
 
     static final Pattern NEWLINE = Pattern.compile("\n");
 
-
     @Test
     public void afwReadLinesWithReactorTest() throws IOException, InterruptedException {
         /**

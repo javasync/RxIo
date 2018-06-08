@@ -53,31 +53,9 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * All methods are asynchronous including the close() which chains a continuation
  * on last resulting read CompletableFuture to close the AsyncFileChannel on completion.
  */
-public class AsyncFileReader implements AutoCloseable {
+public abstract class AsyncFileReader {
 
     static final Pattern NEWLINE = Pattern.compile("(?<=(\n))");
-
-    final AsynchronousFileChannel asyncFile;
-    /**
-     * File position after last read operation completion.
-     */
-    CompletableFuture<Integer> pos = CompletableFuture.completedFuture(0);
-
-    public AsyncFileReader(AsynchronousFileChannel asyncFile) {
-        this.asyncFile = asyncFile;
-    }
-
-    public AsyncFileReader(Path file, StandardOpenOption...options) {
-        this(openFileChannel(file, options));
-    }
-
-    public AsyncFileReader(String path, StandardOpenOption...options) {
-        this(Paths.get(path), options);
-    }
-
-    public AsyncFileReader(String path) {
-        this(path, StandardOpenOption.READ);
-    }
 
     /**
      * Reads the given file from the beginning using
@@ -112,13 +90,9 @@ public class AsyncFileReader implements AutoCloseable {
      * the specified bufferSize capacity.
      */
     public static Publisher<String> lines(int bufferSize, Path file, StandardOpenOption...options) {
-        try {
-            AsynchronousFileChannel asyncFile = open(file, options);
-            ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-            return sub -> lines(asyncFile, 0, buffer, new StringBuilder(), sub);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
+        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+        return sub -> lines(asyncFile, 0, buffer, new StringBuilder(), sub);
     }
 
     static CompletableFuture<byte[]> lines(
@@ -214,7 +188,6 @@ public class AsyncFileReader implements AutoCloseable {
         return promise;
     }
 
-
     /**
      * Reads the file from the beginning using
      * an AsyncFileChannel with a ByteBuffer of
@@ -225,7 +198,6 @@ public class AsyncFileReader implements AutoCloseable {
     public static CompletableFuture<String> readAll(String file) {
         return readAll(file, 1024);
     }
-
 
     /**
      * Reads the file from the beginning using
@@ -257,32 +229,9 @@ public class AsyncFileReader implements AutoCloseable {
      * when read is complete.
      */
     public static CompletableFuture<String> readAll(Path file, int bufferSize) {
-        try (AsyncFileReader reader = new AsyncFileReader(file)) {
-            return reader.readAll(bufferSize);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * 1024 capacity.
-     */
-    public CompletableFuture<String> readAll() {
-        return readAll(1024);
-    }
-
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     * Converts the resulting byte array into a String.
-     */
-    public CompletableFuture<String> readAll(int bufferSize) {
-        return readAllBytes(bufferSize)
-                .thenApply(bytes -> new String(bytes, UTF_8));
+        return AsyncFileReader
+                    .readAllBytes(file, bufferSize)
+                    .thenApply(bytes -> new String(bytes, UTF_8));
     }
 
     /**
@@ -290,8 +239,8 @@ public class AsyncFileReader implements AutoCloseable {
      * using an AsyncFileChannel with a ByteBuffer of
      * 1024 capacity.
      */
-    public CompletableFuture<byte[]> readAllBytes() {
-        return readAllBytes(1024);
+    public static CompletableFuture<byte[]> readAllBytes(Path file) {
+        return readAllBytes(file, 1024);
     }
 
     /**
@@ -299,17 +248,17 @@ public class AsyncFileReader implements AutoCloseable {
      * using an AsyncFileChannel with a ByteBuffer of
      * the specified bufferSize capacity.
      */
-    public CompletableFuture<byte[]> readAllBytes(int bufferSize) {
+    public static CompletableFuture<byte[]> readAllBytes(
+            Path file,
+            int bufferSize,
+            StandardOpenOption...options)
+    {
         ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        /**
-         * Wee need to update pos field.
-         * The pos field is used on close() method, which chains
-         * a continuation to close the asyncFile.
-         */
-        pos = readAllBytes(asyncFile, buffer, 0, out);
-        return pos.thenApply(position -> out.toByteArray());
-
+        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
+        return readAllBytes(asyncFile, buffer, 0, out)
+                .whenComplete((pos, ex) -> closeAfc(asyncFile))
+                .thenApply(position -> out.toByteArray());
     }
 
     static CompletableFuture<Integer> readAllBytes(
@@ -351,21 +300,6 @@ public class AsyncFileReader implements AutoCloseable {
             }
         });
         return promise;
-    }
-
-    /**
-     * Asynchronous close operation.
-     * Chains a continuation on CompletableFuture resulting from last read operation,
-     * which closes the AsyncFileChannel on completion.
-     * @throws IOException
-     */
-    @Override
-    public void close() throws IOException {
-        if(asyncFile != null) {
-            pos.whenComplete((res, ex) ->
-                    closeAfc(asyncFile)
-            );
-        }
     }
 
     private static void closeAfc(AsynchronousFileChannel asyncFile) {
