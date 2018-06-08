@@ -35,6 +35,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -45,6 +47,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.lang.ClassLoader.getSystemResource;
+import static java.lang.System.*;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
@@ -144,8 +147,8 @@ public class AsyncFileReaderTest {
          */
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
-        Iterator<String> expected = NEWLINE
-                .splitAsStream(new String(Files.readAllBytes(PATH)))
+        Iterator<String> expected = Files
+                .lines(PATH, StandardCharsets.UTF_8)
                 .iterator();
         /**
          * Act and Assert
@@ -157,7 +160,7 @@ public class AsyncFileReaderTest {
                         .forEach(line -> {
                             if(!expected.hasNext())
                                 fail("More items read than expected!");
-                            assertEquals(expected.next(), line);
+                            assertEquals(expected.next() + "\r", line);
                         }))
                 .join();
         if(expected.hasNext())
@@ -172,7 +175,10 @@ public class AsyncFileReaderTest {
          */
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
-        String expected = new String(Files.readAllBytes(PATH));
+        String expected = Files
+                .lines(PATH, StandardCharsets.UTF_8)
+                .map(line -> line + lineSeparator())
+                .collect(joining());
         /**
          * Act and Assert
          */
@@ -187,10 +193,12 @@ public class AsyncFileReaderTest {
         /**
          * Arrange
          */
+
+
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
-        Iterator<String> expected = NEWLINE
-                .splitAsStream(new String(Files.readAllBytes(PATH)))
+        Iterator<String> expected = Files
+                .lines(PATH, StandardCharsets.UTF_8)
                 .iterator();
         /**
          * Act and Assert
@@ -202,7 +210,7 @@ public class AsyncFileReaderTest {
                     if(!expected.hasNext())
                         fail("More items read than expected!");
                     String next = expected.next();
-                    assertEquals(next, line);
+                    assertEquals(next + "\r", line);
                 })
                 .blockLast();
         if(expected.hasNext())
