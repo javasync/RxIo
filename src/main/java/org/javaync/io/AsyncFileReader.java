@@ -43,30 +43,41 @@ import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
 import static java.lang.System.lineSeparator;
-import static java.nio.channels.AsynchronousFileChannel.*;
+import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Spliterators.spliteratorUnknownSize;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.StreamSupport.stream;
 
-
 /**
- * Asynchronous non-blocking read operations with a CompletableFuture based API.
+ * Asynchronous non-blocking read operations with a reactive based API.
+ * All read operations return a CompletableFuture with a single String or a
+ * Publisher of strings corresponding to lines.
  * These operations use an underlying AsynchronousFileChannel.
  * All methods are asynchronous including the close() which chains a continuation
  * on last resulting read CompletableFuture to close the AsyncFileChannel on completion.
  */
-public class AsyncFileReader extends AbstractAsyncFile {
+public class AsyncFileReader implements AutoCloseable {
 
     static final Pattern NEWLINE = Pattern.compile(lineSeparator());
 
+    final AsynchronousFileChannel asyncFile;
+    /**
+     * File position after last read operation completion.
+     */
+    CompletableFuture<Integer> pos = CompletableFuture.completedFuture(0);
+
     public AsyncFileReader(AsynchronousFileChannel asyncFile) {
-        super(asyncFile);
+        this.asyncFile = asyncFile;
     }
 
     public AsyncFileReader(Path file, StandardOpenOption...options) {
-        super(file, options);
+        try {
+            asyncFile = open(file, options);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     public AsyncFileReader(Path file) {
@@ -80,7 +91,6 @@ public class AsyncFileReader extends AbstractAsyncFile {
     public AsyncFileReader(String path) {
         this(Paths.get(path), StandardOpenOption.READ);
     }
-
 
     /**
      * Reads the given file from the beginning using
@@ -284,6 +294,29 @@ public class AsyncFileReader extends AbstractAsyncFile {
             }
         });
         return promise;
+    }
+
+    /**
+     * Asynchronous close operation.
+     * Chains a continuation on CompletableFuture resulting from last read operation,
+     * which closes the AsyncFileChannel on completion.
+     * @throws IOException
+     */
+    @Override
+    public void close() throws IOException {
+        if(asyncFile != null) {
+            pos.whenComplete((res, ex) ->
+                    closeAfc(asyncFile)
+            );
+        }
+    }
+
+    private static void closeAfc(AsynchronousFileChannel asyncFile) {
+        try {
+            asyncFile.close();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static CompletableFuture<byte[]> closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, byte[] bytes, Subscriber<? super String> sub) {
