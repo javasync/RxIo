@@ -56,22 +56,28 @@ public class AsyncFileReaderTest {
 
     @Test
     public void afwReadLinesWithReactorTest() throws IOException, InterruptedException {
+        /**
+         * Arrange
+         */
         final String PATH = "output.txt";
         final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
         try (FileWriter writer = new FileWriter(PATH)) {
             expected.forEach(line -> write(writer, line));
         }
-        try (AsyncFileReader reader = new AsyncFileReader(PATH)) {
+        try {
+            /**
+             * Act and Assert
+             */
             final CountDownLatch latch = new CountDownLatch(1);
             final Iterator<String> iter = expected.iterator();
             Flux
-                    .from(reader.lines(4))
-                    .doOnNext(line -> assertEquals(iter.next(), line))
+                    .from(AsyncFileReader.lines(4, PATH)) // Act
+                    .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
                     .doOnComplete(latch::countDown)
                     .subscribe();
             latch.await();
             assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
-        }finally {
+        } finally {
             delete(Paths.get(PATH));
         }
     }
@@ -83,14 +89,15 @@ public class AsyncFileReaderTest {
         try (FileWriter writer = new FileWriter(PATH)) {
             expected.forEach(line -> write(writer, line));
         }
-        try (AsyncFileReader reader = new AsyncFileReader(PATH)) {
+        try {
             final CountDownLatch latch = new CountDownLatch(1);
             Iterator<String> iter = expected.iterator();
-            reader
-                    .lines(4)
+            AsyncFileReader
+                    .lines(4, PATH)
                     .subscribe(new Subscriber<String>() {
                         @Override
-                        public void onSubscribe(Subscription s) {}
+                        public void onSubscribe(Subscription s) {
+                        }
 
                         @Override
                         public void onNext(String item) {
@@ -98,7 +105,8 @@ public class AsyncFileReaderTest {
                         }
 
                         @Override
-                        public void onError(Throwable throwable) {}
+                        public void onError(Throwable throwable) {
+                        }
 
                         @Override
                         public void onComplete() {
@@ -107,7 +115,7 @@ public class AsyncFileReaderTest {
                     });
             latch.await();
             assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
-        }finally {
+        } finally {
             delete(Paths.get(PATH));
         }
     }

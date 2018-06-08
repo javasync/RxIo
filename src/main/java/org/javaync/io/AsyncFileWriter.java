@@ -35,6 +35,14 @@ import java.util.concurrent.CompletableFuture;
 
 import static java.nio.ByteBuffer.wrap;
 
+/**
+ * Asynchronous non-blocking write operations with a CompletableFuture based API.
+ * These operations use an underlying AsynchronousFileChannel.
+ * All methods are asynchronous including the close() which chains a continuation
+ * on last resulting write CompletableFuture to close the AsyncFileChannel on completion.
+ * All write methods return a CompletableFuture of an integer with the final file index
+ * after the completion of corresponding write operation.
+ */
 public class AsyncFileWriter extends AbstractAsyncFile {
 
     public AsyncFileWriter(AsynchronousFileChannel asyncFile) {

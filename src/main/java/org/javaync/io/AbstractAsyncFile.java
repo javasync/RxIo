@@ -33,6 +33,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 
+import static java.nio.channels.AsynchronousFileChannel.open;
+
 public class AbstractAsyncFile implements AutoCloseable {
 
     final AsynchronousFileChannel asyncFile;
@@ -44,7 +46,7 @@ public class AbstractAsyncFile implements AutoCloseable {
 
     public AbstractAsyncFile(Path file, StandardOpenOption...options) {
         try {
-            asyncFile = AsynchronousFileChannel.open(file, options);
+            asyncFile = open(file, options);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
