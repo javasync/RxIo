@@ -59,15 +59,7 @@ public class AsyncFileWriter implements AutoCloseable{
     }
 
     public AsyncFileWriter(Path file, StandardOpenOption...options) {
-        try {
-            asyncFile = open(file, options);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    public AsyncFileWriter(Path file) {
-        this(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        this(openFileChannel(file, options));
     }
 
     public AsyncFileWriter(String path, StandardOpenOption...options) {
@@ -75,7 +67,7 @@ public class AsyncFileWriter implements AutoCloseable{
     }
 
     public AsyncFileWriter(String path) {
-        this(Paths.get(path), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        this(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
     /**
@@ -162,6 +154,14 @@ public class AsyncFileWriter implements AutoCloseable{
     private static void closeAfc(AsynchronousFileChannel asyncFile) {
         try {
             asyncFile.close();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
+        try {
+            return open(file, options);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

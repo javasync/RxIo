@@ -73,15 +73,7 @@ public class AsyncFileReader implements AutoCloseable {
     }
 
     public AsyncFileReader(Path file, StandardOpenOption...options) {
-        try {
-            asyncFile = open(file, options);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    public AsyncFileReader(Path file) {
-        this(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        this(openFileChannel(file, options));
     }
 
     public AsyncFileReader(String path, StandardOpenOption...options) {
@@ -89,7 +81,7 @@ public class AsyncFileReader implements AutoCloseable {
     }
 
     public AsyncFileReader(String path) {
-        this(Paths.get(path), StandardOpenOption.READ);
+        this(path, StandardOpenOption.READ);
     }
 
     /**
@@ -145,7 +137,7 @@ public class AsyncFileReader implements AutoCloseable {
                 .thenCompose(bytes -> parseByLine(asyncFile, bytes, position, buffer, res, sub));
     }
 
-    static private CompletableFuture<byte[]> parseByLine(
+    static CompletableFuture<byte[]> parseByLine(
             AsynchronousFileChannel asyncFile, byte[] bytes,
             int position,
             ByteBuffer buffer,
@@ -188,11 +180,11 @@ public class AsyncFileReader implements AutoCloseable {
 
     static CompletableFuture<byte[]> readBytes(
             AsynchronousFileChannel asyncFile,
-            ByteBuffer buf,
+            ByteBuffer buffer,
             int position)
     {
         CompletableFuture<byte[]> promise = new CompletableFuture<>();
-        asyncFile.read(buf, position, buf, new CompletionHandler<Integer, ByteBuffer>() {
+        asyncFile.read(buffer, position, buffer, new CompletionHandler<Integer, ByteBuffer>() {
             @Override
             public void completed(Integer result, ByteBuffer attachment) {
                 attachment.flip();
@@ -251,32 +243,33 @@ public class AsyncFileReader implements AutoCloseable {
          * The pos field is used on close() method, which chains
          * a continuation to close the asyncFile.
          */
-        pos = readAllBytes(0, buffer, out);
+        pos = readAllBytes(asyncFile, buffer, 0, out);
         return pos.thenApply(position -> out.toByteArray());
 
     }
 
-    CompletableFuture<Integer> readAllBytes(
-            int position,
+    static CompletableFuture<Integer> readAllBytes(
+            AsynchronousFileChannel asyncFile,
             ByteBuffer buffer,
+            int position,
             ByteArrayOutputStream out)
     {
         return  readToByteArrayStream(asyncFile, buffer, position, out)
                         .thenCompose(index ->
                                 index < 0
                                 ? completedFuture(position)
-                                : readAllBytes(position + index, buffer.clear(), out));
+                                : readAllBytes(asyncFile, buffer.clear(), position + index, out));
 
     }
 
     static CompletableFuture<Integer> readToByteArrayStream(
             AsynchronousFileChannel asyncFile,
-            ByteBuffer buf,
+            ByteBuffer buffer,
             int position,
             ByteArrayOutputStream out)
     {
         CompletableFuture<Integer> promise = new CompletableFuture<>();
-        asyncFile.read(buf, position, buf, new CompletionHandler<Integer, ByteBuffer>() {
+        asyncFile.read(buffer, position, buffer, new CompletionHandler<Integer, ByteBuffer>() {
             @Override
             public void completed(Integer result, ByteBuffer attachment) {
                 if(result > 0) {
@@ -337,4 +330,11 @@ public class AsyncFileReader implements AutoCloseable {
         }
     }
 
+    private static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
+        try {
+            return open(file, options);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 }
