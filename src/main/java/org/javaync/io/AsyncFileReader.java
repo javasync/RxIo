@@ -38,17 +38,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
-import java.util.Spliterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
-import static java.lang.System.lineSeparator;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Spliterators.spliteratorUnknownSize;
 import static java.util.concurrent.CompletableFuture.completedFuture;
-import static java.util.stream.Collectors.joining;
-import static java.util.stream.StreamSupport.stream;
 
 /**
  * Asynchronous non-blocking read operations with a reactive based API.
@@ -60,7 +55,7 @@ import static java.util.stream.StreamSupport.stream;
  */
 public class AsyncFileReader implements AutoCloseable {
 
-    static final Pattern NEWLINE = Pattern.compile(lineSeparator());
+    static final Pattern NEWLINE = Pattern.compile("(?<=(\n))");
 
     final AsynchronousFileChannel asyncFile;
     /**
@@ -137,6 +132,10 @@ public class AsyncFileReader implements AutoCloseable {
                 .thenCompose(bytes -> parseByLine(asyncFile, bytes, position, buffer, res, sub));
     }
 
+    /**
+     * !!!! Before refactoring this method remember:
+     * "premature optimization is the root of all evil" Donald Knuth
+     */
     static CompletableFuture<byte[]> parseByLine(
             AsynchronousFileChannel asyncFile, byte[] bytes,
             int position,
@@ -144,37 +143,51 @@ public class AsyncFileReader implements AutoCloseable {
             StringBuilder res,
             Subscriber<? super String> sub)
     {
-        if(bytes.length == 0) return closeAndNotifiesCompletion(asyncFile, bytes, sub);
+        if(bytes.length == 0)
+            return closeAndNotifiesCompletion(asyncFile, bytes, sub);
 
         res.append(new String(bytes, UTF_8));
-        if(res.indexOf(lineSeparator()) < 0 && bytes.length >= buffer.capacity()) {
+        if(res.indexOf("\n") < 0 && bytes.length >= buffer.capacity()) {
             // There is NO new line in res string. Thus proceed to read next chunk of bytes.
             return lines(asyncFile, position + bytes.length, buffer.clear(), res, sub);
         }
         /**
-         * Notifies subscriber with a line
+         * Notifies subscriber with lines
          */
         Iterator<String> iter = NEWLINE.splitAsStream(res).iterator();
-        String line = iter.next();
-        sub.onNext(line);
+        String remaining = null;
+        while(iter.hasNext()) {
+            String line = iter.next();
+            if(!iter.hasNext() && line.indexOf("\n") < 0) {
+                // This is the last sentence and has NO newline char.
+                // So we do not want to notify it in onNext() and
+                // we put it on remaining for the next iteration.
+                remaining = line;
+            } else {
+                // Remove the newline char.
+                line = line.substring(0, line.length() - 1);
+                sub.onNext(line);
+            }
+        }
         /**
-         * Call lines() recursively for the rest of the string
+         * Call lines() recursively for the remaining of the string
          */
-        Spliterator<String> rest = spliteratorUnknownSize(iter, Spliterator.ORDERED);
-        String restString = stream(rest, false).collect(joining(lineSeparator()));
         if(bytes.length < buffer.capacity()) {
             /**
              * Already reaches the end of the file.
              */
-            if(restString != null && !restString.equals(""))
-                sub.onNext(restString); // Notify last string if exist
+            if(remaining != null)
+                sub.onNext(remaining); // So notify last string
             return closeAndNotifiesCompletion(asyncFile, bytes, sub);
         }
         else {
+            res = remaining == null
+                    ? new StringBuilder()
+                    : new StringBuilder(remaining);
             /**
              * Continue reading the file.
              */
-            return lines(asyncFile, position + bytes.length, buffer.clear(), new StringBuilder(restString), sub);
+            return lines(asyncFile, position + bytes.length, buffer.clear(), res, sub);
         }
     }
 
@@ -200,6 +213,57 @@ public class AsyncFileReader implements AutoCloseable {
         });
         return promise;
     }
+
+
+    /**
+     * Reads the file from the beginning using
+     * an AsyncFileChannel with a ByteBuffer of
+     * 1024 capacity.
+     * It automatically closes the underlying AsyncFileChannel
+     * when read is complete.
+     */
+    public static CompletableFuture<String> readAll(String file) {
+        return readAll(file, 1024);
+    }
+
+
+    /**
+     * Reads the file from the beginning using
+     * an AsyncFileChannel with a ByteBuffer of
+     * the specified bufferSize capacity.
+     * It automatically closes the underlying AsyncFileChannel
+     * when read is complete.
+     */
+    public static CompletableFuture<String> readAll(String file, int bufferSize) {
+        return readAll(Paths.get(file), bufferSize);
+    }
+
+    /**
+     * Reads the file from the beginning using
+     * an AsyncFileChannel with a ByteBuffer of
+     * 1024 capacity.
+     * It automatically closes the underlying AsyncFileChannel
+     * when read is complete.
+     */
+    public static CompletableFuture<String> readAll(Path file) {
+        return readAll(file, 1024);
+    }
+
+    /**
+     * Reads the file from the beginning using
+     * an AsyncFileChannel with a ByteBuffer of
+     * the specified bufferSize capacity.
+     * It automatically closes the underlying AsyncFileChannel
+     * when read is complete.
+     */
+    public static CompletableFuture<String> readAll(Path file, int bufferSize) {
+        try (AsyncFileReader reader = new AsyncFileReader(file)) {
+            return reader.readAll(bufferSize);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
 
     /**
      * Reads the file from the beginning using

@@ -33,25 +33,28 @@ import reactor.core.publisher.Flux;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import static java.lang.System.lineSeparator;
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.file.Files.delete;
+import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.joining;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
 public class AsyncFileReaderTest {
 
-    static final Pattern NEWLINE = Pattern.compile(lineSeparator());
+    static final Pattern NEWLINE = Pattern.compile("\n");
 
 
     @Test
@@ -59,23 +62,18 @@ public class AsyncFileReaderTest {
         /**
          * Arrange
          */
-        final String PATH = "output.txt";
-        final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        try (FileWriter writer = new FileWriter(PATH)) {
-            expected.forEach(line -> write(writer, line));
-        }
+        String PATH = "output.txt";
+        List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
+        writeLinesSync(PATH, expected);
         try {
             /**
              * Act and Assert
              */
-            final CountDownLatch latch = new CountDownLatch(1);
-            final Iterator<String> iter = expected.iterator();
+            Iterator<String> iter = expected.iterator();
             Flux
-                    .from(AsyncFileReader.lines(4, PATH)) // Act
+                    .from(AsyncFileReader.lines(8, PATH)) // Act
                     .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
-                    .doOnComplete(latch::countDown)
-                    .subscribe();
-            latch.await();
+                    .blockLast();
             assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
         } finally {
             delete(Paths.get(PATH));
@@ -85,10 +83,8 @@ public class AsyncFileReaderTest {
     @Test
     public void afwReadLinesTest() throws IOException, InterruptedException {
         final String PATH = "output.txt";
-        final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        try (FileWriter writer = new FileWriter(PATH)) {
-            expected.forEach(line -> write(writer, line));
-        }
+        final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
+        writeLinesSync(PATH, expected);
         try {
             final CountDownLatch latch = new CountDownLatch(1);
             Iterator<String> iter = expected.iterator();
@@ -124,15 +120,12 @@ public class AsyncFileReaderTest {
     @Test
     public void afwReadAllBytesTest() throws IOException {
         final String PATH = "output.txt";
-        final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        try (FileWriter writer = new FileWriter(PATH)) {
-            expected.forEach(line -> write(writer, line));
-        }
-        try (AsyncFileReader reader = new AsyncFileReader(PATH)) {
+        final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
+        writeLinesSync(PATH, expected);
+        try {
             Iterator<String> iter = expected.iterator();
-            reader
-                    .readAllBytes(8)
-                    .thenApply(bytes -> new String(bytes, UTF_8))
+            AsyncFileReader
+                    .readAll(PATH, 8)
                     .thenApply(NEWLINE::splitAsStream)
                     .thenApply(Stream::iterator)
                     .thenAccept(actual -> expected.forEach(l -> {
@@ -145,13 +138,82 @@ public class AsyncFileReaderTest {
         }
     }
 
+    @Test
+    public void ReadAllBytesLargeTextFileTest() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path PATH = Paths.get(FILE.toURI());
+        Iterator<String> expected = NEWLINE
+                .splitAsStream(new String(Files.readAllBytes(PATH)))
+                .iterator();
+        /**
+         * Act and Assert
+         */
+        AsyncFileReader
+                .readAll(PATH)
+                .thenAccept(actual -> NEWLINE
+                        .splitAsStream(actual)
+                        .forEach(line -> {
+                            if(!expected.hasNext())
+                                fail("More items read than expected!");
+                            assertEquals(expected.next(), line);
+                        }))
+                .join();
+        if(expected.hasNext())
+            fail("There are missing lines to read: " + expected.next());
 
-    private static void write(FileWriter writer, String line) {
-        try {
-            writer.write(line);
-            writer.write(lineSeparator());
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+    }
+
+    @Test
+    public void ReadAllLargeTextFileTest() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path PATH = Paths.get(FILE.toURI());
+        String expected = new String(Files.readAllBytes(PATH));
+        /**
+         * Act and Assert
+         */
+        AsyncFileReader
+                .readAll(PATH.toString())
+                .thenAccept(actual -> assertEquals(expected, actual))
+                .join();
+    }
+
+    @Test
+    public void ReadAllLinesLargeTextFileWithReactorTest() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path PATH = Paths.get(FILE.toURI());
+        Iterator<String> expected = NEWLINE
+                .splitAsStream(new String(Files.readAllBytes(PATH)))
+                .iterator();
+        /**
+         * Act and Assert
+         */
+        Flux
+                .from(AsyncFileReader.lines(PATH.toString())) // Act
+                .doOnError(ex -> fail(ex.getMessage()))
+                .doOnNext(line -> {
+                    if(!expected.hasNext())
+                        fail("More items read than expected!");
+                    String next = expected.next();
+                    assertEquals(next, line);
+                })
+                .blockLast();
+        if(expected.hasNext())
+            fail("There are missing lines to read: " + expected.next());
+    }
+
+    private static void writeLinesSync(String path, List<String> lines) throws IOException {
+        try (FileWriter writer = new FileWriter(path)) {
+            String data = lines.stream().collect(joining("\n"));
+            writer.write(data);
         }
     }
 }
