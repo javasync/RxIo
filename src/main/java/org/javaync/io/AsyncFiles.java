@@ -53,6 +53,9 @@ public class AsyncFiles {
 
     static final int BUFFER_SIZE = 262144;
 
+    private AsyncFiles() {
+    }
+
     /**
      * Reads the given file from the beginning using an AsyncFileChannel
      * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.

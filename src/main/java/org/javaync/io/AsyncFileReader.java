@@ -50,6 +50,9 @@ public abstract class AsyncFileReader {
 
     static final Pattern NEWLINE = Pattern.compile("(?<=(\n))");
 
+    private AsyncFileReader() {
+    }
+
     static CompletableFuture<byte[]> lines(
             AsynchronousFileChannel asyncFile,
             int position,
@@ -87,7 +90,7 @@ public abstract class AsyncFileReader {
         String remaining = null;
         while(iter.hasNext()) {
             String line = iter.next();
-            if(!iter.hasNext() && line.indexOf("\n") < 0) {
+            if(!iter.hasNext() && line.indexOf('\n') < 0) {
                 // This is the last sentence and has NO newline char.
                 // So we do not want to notify it in onNext() and
                 // we put it on remaining for the next iteration.
