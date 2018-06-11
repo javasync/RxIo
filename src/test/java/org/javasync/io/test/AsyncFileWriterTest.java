@@ -43,7 +43,7 @@ import static org.junit.Assert.fail;
 public class AsyncFileWriterTest {
 
     @Test
-    public void afwWriteTest() throws IOException {
+    public void writeLinesTest() throws IOException {
         final String PATH = "output.txt";
         final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massive");
         try (AsyncFileWriter writer = new AsyncFileWriter(PATH)) {

@@ -60,7 +60,7 @@ public class AsyncFileReaderTest {
     static final Pattern NEWLINE = Pattern.compile("\n");
 
     @Test
-    public void afwReadLinesWithReactorTest() throws IOException, InterruptedException {
+    public void readLinesWithReactorTest() throws IOException, InterruptedException {
         /**
          * Arrange
          */
@@ -83,7 +83,7 @@ public class AsyncFileReaderTest {
     }
 
     @Test
-    public void afwReadLinesTest() throws IOException, InterruptedException {
+    public void readLinesTest() throws IOException, InterruptedException {
         final String PATH = "output.txt";
         final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
         writeLinesSync(PATH, expected);
@@ -120,7 +120,7 @@ public class AsyncFileReaderTest {
 
 
     @Test
-    public void afwReadAllBytesTest() throws IOException {
+    public void readAllBytesTest() throws IOException {
         final String PATH = "output.txt";
         final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
         writeLinesSync(PATH, expected);
@@ -141,7 +141,7 @@ public class AsyncFileReaderTest {
     }
 
     @Test
-    public void ReadAllBytesLargeTextFileTest() throws IOException, URISyntaxException {
+    public void readAllBytesLargeTextFileTest() throws IOException, URISyntaxException {
         /**
          * Arrange
          */
@@ -169,7 +169,7 @@ public class AsyncFileReaderTest {
     }
 
     @Test
-    public void ReadAllLargeTextFileTest() throws IOException, URISyntaxException {
+    public void readAllLargeTextFileTest() throws IOException, URISyntaxException {
         /**
          * Arrange
          */
@@ -189,7 +189,7 @@ public class AsyncFileReaderTest {
     }
 
     @Test
-    public void ReadAllLinesLargeTextFileWithReactorTest() throws IOException, URISyntaxException {
+    public void readAllLinesLargeTextFileWithReactorTest() throws IOException, URISyntaxException {
         /**
          * Arrange
          */
