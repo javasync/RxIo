@@ -25,7 +25,7 @@
 
 package org.javasync.io.test;
 
-import org.javaync.io.AsyncFileReader;
+import org.javaync.io.AsyncFiles;
 import org.junit.Test;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
@@ -35,7 +35,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,7 +46,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.lang.ClassLoader.getSystemResource;
-import static java.lang.System.*;
+import static java.lang.System.lineSeparator;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
@@ -73,7 +72,7 @@ public class AsyncFileReaderTest {
              */
             Iterator<String> iter = expected.iterator();
             Flux
-                    .from(AsyncFileReader.lines(8, PATH)) // Act
+                    .from(AsyncFiles.lines(8, PATH)) // Act
                     .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
                     .blockLast();
             assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
@@ -90,7 +89,7 @@ public class AsyncFileReaderTest {
         try {
             final CountDownLatch latch = new CountDownLatch(1);
             Iterator<String> iter = expected.iterator();
-            AsyncFileReader
+            AsyncFiles
                     .lines(4, PATH)
                     .subscribe(new Subscriber<String>() {
                         @Override
@@ -126,7 +125,7 @@ public class AsyncFileReaderTest {
         writeLinesSync(PATH, expected);
         try {
             Iterator<String> iter = expected.iterator();
-            AsyncFileReader
+            AsyncFiles
                     .readAll(PATH, 8)
                     .thenApply(NEWLINE::splitAsStream)
                     .thenApply(Stream::iterator)
@@ -153,7 +152,7 @@ public class AsyncFileReaderTest {
         /**
          * Act and Assert
          */
-        AsyncFileReader
+        AsyncFiles
                 .readAll(PATH)
                 .thenAccept(actual -> NEWLINE
                         .splitAsStream(actual)
@@ -182,7 +181,7 @@ public class AsyncFileReaderTest {
         /**
          * Act and Assert
          */
-        AsyncFileReader
+        AsyncFiles
                 .readAll(PATH.toString())
                 .thenAccept(actual -> assertEquals(expected, actual))
                 .join();
@@ -204,7 +203,7 @@ public class AsyncFileReaderTest {
          * Act and Assert
          */
         Flux
-                .from(AsyncFileReader.lines(PATH.toString())) // Act
+                .from(AsyncFiles.lines(PATH.toString())) // Act
                 .doOnError(ex -> fail(ex.getMessage()))
                 .doOnNext(line -> {
                     if(!expected.hasNext())

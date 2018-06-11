@@ -26,25 +26,20 @@
 package org.javaync.io;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 
 import static java.nio.ByteBuffer.wrap;
-import static java.nio.channels.AsynchronousFileChannel.open;
 
 /**
  * Asynchronous non-blocking write operations with a CompletableFuture based API.
  * These operations use an underlying AsynchronousFileChannel.
  * All methods are asynchronous including the close() which chains a continuation
  * on last resulting write CompletableFuture to close the AsyncFileChannel on completion.
- * All write methods return a CompletableFuture of an integer with the final file index
- * after the completion of corresponding write operation.
  */
 public class AsyncFileWriter implements AutoCloseable{
 
@@ -52,22 +47,19 @@ public class AsyncFileWriter implements AutoCloseable{
     /**
      * File position after last write operation completion.
      */
-    CompletableFuture<Integer> pos = CompletableFuture.completedFuture(0);
+    private CompletableFuture<Integer> currentPosition = CompletableFuture.completedFuture(0);
 
     public AsyncFileWriter(AsynchronousFileChannel asyncFile) {
         this.asyncFile = asyncFile;
     }
 
     public AsyncFileWriter(Path file, StandardOpenOption...options) {
-        this(openFileChannel(file, options));
+        this(AsyncFiles.openFileChannel(file, options));
     }
 
-    public AsyncFileWriter(String path, StandardOpenOption...options) {
-        this(Paths.get(path), options);
-    }
 
-    public AsyncFileWriter(String path) {
-        this(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+    public CompletableFuture<Integer> getPosition() {
+        return currentPosition;
     }
 
     /**
@@ -75,7 +67,7 @@ public class AsyncFileWriter implements AutoCloseable{
      * and returns a CompletableFuture of the final file index
      * after the completion of the corresponding write operation.
      */
-    public CompletableFuture<Integer> writeLine(String str) {
+    public CompletableFuture<Integer> writeLine(CharSequence str) {
         return write(str + System.lineSeparator());
     }
 
@@ -104,15 +96,15 @@ public class AsyncFileWriter implements AutoCloseable{
      */
     public CompletableFuture<Integer> write(ByteBuffer bytes) {
         /**
-         * Wee need to update pos field to keep track.
-         * The pos field is used on close() method, which chains
+         * Wee need to update currentPosition field to keep track.
+         * The currentPosition field is used on close() method, which chains
          * a continuation to close the AsyncFileChannel.
          */
-        pos = pos.thenCompose(index -> {
+        currentPosition = currentPosition.thenCompose(index -> {
             CompletableFuture<Integer> size = write(asyncFile, bytes, index);
             return size.thenApply(length -> length + index);
         });
-        return pos;
+        return currentPosition;
     }
 
 
@@ -145,25 +137,9 @@ public class AsyncFileWriter implements AutoCloseable{
     @Override
     public void close() throws IOException {
         if(asyncFile != null) {
-            pos.whenComplete((res, ex) ->
-                    closeAfc(asyncFile)
+            currentPosition.whenComplete((res, ex) ->
+                    AsyncFiles.closeAfc(asyncFile)
             );
-        }
-    }
-
-    private static void closeAfc(AsynchronousFileChannel asyncFile) {
-        try {
-            asyncFile.close();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    private static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
-        try {
-            return open(file, options);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         }
     }
 }

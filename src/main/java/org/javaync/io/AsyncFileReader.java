@@ -25,7 +25,6 @@
 
 package org.javaync.io;
 
-import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 
 import java.io.ByteArrayOutputStream;
@@ -34,14 +33,10 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
-import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
@@ -50,50 +45,10 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * All read operations return a CompletableFuture with a single String or a
  * Publisher of strings corresponding to lines.
  * These operations use an underlying AsynchronousFileChannel.
- * All methods are asynchronous including the close() which chains a continuation
- * on last resulting read CompletableFuture to close the AsyncFileChannel on completion.
  */
 public abstract class AsyncFileReader {
 
     static final Pattern NEWLINE = Pattern.compile("(?<=(\n))");
-
-    /**
-     * Reads the given file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * 1024 capacity.
-     */
-    public static Publisher<String> lines(String file) {
-        return lines(1024, Paths.get(file));
-    }
-
-    /**
-     * Reads the given file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     */
-    public static Publisher<String> lines(int bufferSize, String file) {
-        return lines(bufferSize, Paths.get(file));
-    }
-
-    /**
-     * Reads the given file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     */
-    public static Publisher<String> lines(int bufferSize, Path file) {
-        return lines(bufferSize, file, StandardOpenOption.READ);
-    }
-
-    /**
-     * Reads the given file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     */
-    public static Publisher<String> lines(int bufferSize, Path file, StandardOpenOption...options) {
-        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-        return sub -> lines(asyncFile, 0, buffer, new StringBuilder(), sub);
-    }
 
     static CompletableFuture<byte[]> lines(
             AsynchronousFileChannel asyncFile,
@@ -188,79 +143,6 @@ public abstract class AsyncFileReader {
         return promise;
     }
 
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * 1024 capacity.
-     * It automatically closes the underlying AsyncFileChannel
-     * when read is complete.
-     */
-    public static CompletableFuture<String> readAll(String file) {
-        return readAll(file, 1024);
-    }
-
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     * It automatically closes the underlying AsyncFileChannel
-     * when read is complete.
-     */
-    public static CompletableFuture<String> readAll(String file, int bufferSize) {
-        return readAll(Paths.get(file), bufferSize);
-    }
-
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * 1024 capacity.
-     * It automatically closes the underlying AsyncFileChannel
-     * when read is complete.
-     */
-    public static CompletableFuture<String> readAll(Path file) {
-        return readAll(file, 1024);
-    }
-
-    /**
-     * Reads the file from the beginning using
-     * an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     * It automatically closes the underlying AsyncFileChannel
-     * when read is complete.
-     */
-    public static CompletableFuture<String> readAll(Path file, int bufferSize) {
-        return AsyncFileReader
-                    .readAllBytes(file, bufferSize)
-                    .thenApply(bytes -> new String(bytes, UTF_8));
-    }
-
-    /**
-     * Reads all bytes from the beginning of the file
-     * using an AsyncFileChannel with a ByteBuffer of
-     * 1024 capacity.
-     */
-    public static CompletableFuture<byte[]> readAllBytes(Path file) {
-        return readAllBytes(file, 1024);
-    }
-
-    /**
-     * Reads all bytes from the beginning of the file
-     * using an AsyncFileChannel with a ByteBuffer of
-     * the specified bufferSize capacity.
-     */
-    public static CompletableFuture<byte[]> readAllBytes(
-            Path file,
-            int bufferSize,
-            StandardOpenOption...options)
-    {
-        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-        return readAllBytes(asyncFile, buffer, 0, out)
-                .whenComplete((pos, ex) -> closeAfc(asyncFile))
-                .thenApply(position -> out.toByteArray());
-    }
-
     static CompletableFuture<Integer> readAllBytes(
             AsynchronousFileChannel asyncFile,
             ByteBuffer buffer,
@@ -302,15 +184,7 @@ public abstract class AsyncFileReader {
         return promise;
     }
 
-    private static void closeAfc(AsynchronousFileChannel asyncFile) {
-        try {
-            asyncFile.close();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    private static CompletableFuture<byte[]> closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, byte[] bytes, Subscriber<? super String> sub) {
+    static CompletableFuture<byte[]> closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, byte[] bytes, Subscriber<? super String> sub) {
         try {
             asyncFile.close();
             sub.onComplete(); // Successful terminal state.
@@ -320,17 +194,9 @@ public abstract class AsyncFileReader {
         return completedFuture(bytes);
     }
 
-    private static void write(ByteArrayOutputStream out, byte[] data) {
+    static void write(ByteArrayOutputStream out, byte[] data) {
         try {
             out.write(data);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    private static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
-        try {
-            return open(file, options);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
