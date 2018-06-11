@@ -25,18 +25,23 @@
 
 package org.javasync.io.test;
 
-import org.javaync.io.AsyncFileWriter;
+import org.javaync.io.AsyncFiles;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
+import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.file.Files.delete;
 import static java.nio.file.Files.lines;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
@@ -46,11 +51,13 @@ public class AsyncFileWriterTest {
     public void writeLinesTest() throws IOException {
         final String PATH = "output.txt";
         final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massive");
-        try (AsyncFileWriter writer = new AsyncFileWriter(PATH)) {
-            expected
-                    .stream()
-                    .map(writer::writeLine)
-                    .forEach(CompletableFuture::join);
+        try {
+            AsyncFiles
+                    .write(Paths.get(PATH), expected)
+                    .whenComplete((index, ex) -> {
+                        if (ex != null) fail(ex.getMessage());
+                    })
+                    .join();
             Iterator<String> actual = lines(Paths.get(PATH)).iterator();
             if (actual.hasNext() == false)
                 fail("File is empty!!!");
@@ -60,6 +67,28 @@ public class AsyncFileWriterTest {
             });
         } finally {
             delete(Paths.get(PATH));
+        }
+    }
+
+    @Test
+    public void writeBytesTest() throws IOException, URISyntaxException {
+        final String OUTPUT = "output.txt";
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path PATH = Paths.get(FILE.toURI());
+        byte[] expected = Files.readAllBytes(PATH);
+        AsyncFiles
+                .writeBytes(Paths.get(OUTPUT), expected)
+                .join();
+        try {
+            AsyncFiles
+                    .readAllBytes(Paths.get(OUTPUT))
+                    .whenComplete((actual, ex) -> {
+                        if (ex != null) fail(ex.getMessage());
+                        assertArrayEquals(expected, actual);
+                    })
+                    .join();
+        }finally {
+            delete(Paths.get(OUTPUT));
         }
     }
 }
