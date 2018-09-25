@@ -25,13 +25,13 @@
 
 package org.javasync.io.test;
 
+import junit.framework.AssertionFailedError;
 import org.javaync.io.AsyncFiles;
 import org.junit.Test;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
 
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -65,7 +66,7 @@ public class AsyncFileReaderTest {
          */
         String PATH = "output.txt";
         List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        writeLinesSync(PATH, expected);
+        Files.write(Paths.get(PATH), expected);
         try {
             /**
              * Act and Assert
@@ -73,7 +74,7 @@ public class AsyncFileReaderTest {
             Iterator<String> iter = expected.iterator();
             Flux
                     .from(AsyncFiles.lines(8, PATH)) // Act
-                    .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
+                    .doOnNext(line -> assertEquals(iter.next() + "\r", line)) // Assert
                     .blockLast();
             assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
         } finally {
@@ -85,32 +86,27 @@ public class AsyncFileReaderTest {
     public void afwReadLinesTest() throws IOException, InterruptedException {
         final String PATH = "output.txt";
         final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        writeLinesSync(PATH, expected);
+        Files.write(Paths.get(PATH), expected);
         try {
-            final CountDownLatch latch = new CountDownLatch(1);
+            CompletableFuture<Void> p = new CompletableFuture<>();
             Iterator<String> iter = expected.iterator();
             AsyncFiles
                     .lines(4, PATH)
                     .subscribe(new Subscriber<String>() {
-                        @Override
-                        public void onSubscribe(Subscription s) {
-                        }
-
-                        @Override
+                        public void onSubscribe(Subscription s) { }
                         public void onNext(String item) {
-                            assertEquals(iter.next(), item);
+                            String curr = iter.next() + "\r";
+                            if(!curr.equals(item)) {
+                                String msg = curr + " != " + item;
+                                p.completeExceptionally(new AssertionFailedError(msg));
+                            }
                         }
-
-                        @Override
-                        public void onError(Throwable throwable) {
-                        }
-
-                        @Override
+                        public void onError(Throwable throwable) { }
                         public void onComplete() {
-                            latch.countDown();
+                            p.complete(null);
                         }
                     });
-            latch.await();
+            p.join();
             assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
         } finally {
             delete(Paths.get(PATH));
@@ -122,7 +118,7 @@ public class AsyncFileReaderTest {
     public void afwReadAllBytesTest() throws IOException {
         final String PATH = "output.txt";
         final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        writeLinesSync(PATH, expected);
+        Files.write(Paths.get(PATH), expected);
         try {
             Iterator<String> iter = expected.iterator();
             AsyncFiles
@@ -131,7 +127,7 @@ public class AsyncFileReaderTest {
                     .thenApply(Stream::iterator)
                     .thenAccept(actual -> expected.forEach(l -> {
                             if (actual.hasNext() == false) fail("File does not contain line: " + l);
-                            assertEquals(l, actual.next());
+                            assertEquals(l + "\r", actual.next());
                     }))
                     .join();
         }finally {
@@ -192,8 +188,6 @@ public class AsyncFileReaderTest {
         /**
          * Arrange
          */
-
-
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         Iterator<String> expected = Files
@@ -214,12 +208,5 @@ public class AsyncFileReaderTest {
                 .blockLast();
         if(expected.hasNext())
             fail("There are missing lines to read: " + expected.next());
-    }
-
-    private static void writeLinesSync(String path, List<String> lines) throws IOException {
-        try (FileWriter writer = new FileWriter(path)) {
-            String data = lines.stream().collect(joining("\n"));
-            writer.write(data);
-        }
     }
 }

@@ -91,4 +91,38 @@ public class AsyncFileWriterTest {
             delete(Paths.get(OUTPUT));
         }
     }
+
+    @Test
+    public void readWriteTestAsyncForReadme() throws IOException, URISyntaxException {
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path in = Paths.get(FILE.toURI());
+        Path out = Paths.get("output.txt");
+        try {
+            AsyncFiles
+                    .readAllBytes(in)
+                    .thenCompose(bytes -> AsyncFiles.writeBytes(out, bytes))
+                    .join();
+            byte[] expected = Files.readAllBytes(in);
+            byte[] actual = Files.readAllBytes(out);
+            assertArrayEquals(expected, actual);
+        } finally {
+            delete(out);
+        }
+    }
+
+    @Test
+    public void readWriteTestSyncForReadme() throws IOException, URISyntaxException {
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path in = Paths.get(FILE.toURI());
+        Path out = Paths.get("output.txt");
+        try {
+            byte[] data = Files.readAllBytes(in);
+            Files.write(out, data);
+            byte[] expected = Files.readAllBytes(in);
+            byte[] actual = Files.readAllBytes(out);
+            assertArrayEquals(expected, actual);
+        } finally {
+            delete(out);
+        }
+    }
 }
