@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -100,6 +101,21 @@ public class AsyncFiles {
      */
     public static CompletableFuture<String> readAll(String file) {
         return readAll(file, BUFFER_SIZE);
+    }
+
+    /**
+     * A callback based version of readAll().
+     * Reads the file from the beginning using an AsyncFileChannel
+     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * It automatically closes the underlying AsyncFileChannel when read is complete.
+     */
+    public static void readAll(String file, BiConsumer<Throwable, String> callback) {
+        readAll(file, BUFFER_SIZE)
+            .thenAccept(data -> callback.accept(null, data))
+            .exceptionally(err -> {
+                callback.accept(err, null);
+                throw new RuntimeException(err);
+            });
     }
 
     /**

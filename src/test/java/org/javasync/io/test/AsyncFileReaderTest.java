@@ -42,7 +42,6 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -181,6 +180,29 @@ public class AsyncFileReaderTest {
                 .readAll(PATH.toString())
                 .thenAccept(actual -> assertEquals(expected, actual))
                 .join();
+    }
+
+    @Test
+    public void ReadAllViaCallbackLargeTextFileTest() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+        Path PATH = Paths.get(FILE.toURI());
+        String expected = Files
+                .lines(PATH, StandardCharsets.UTF_8)
+                .map(line -> line + lineSeparator())
+                .collect(joining());
+        /**
+         * Act and Assert
+         */
+        CompletableFuture<Void> p = new CompletableFuture<>();
+        AsyncFiles
+                .readAll(PATH.toString(), (err, actual) -> {
+                    assertEquals(expected, actual);
+                    p.complete(null);
+                });
+        p.join();
     }
 
     @Test
