@@ -111,7 +111,7 @@ public class AsyncFiles {
      */
     public static void readAll(String file, BiConsumer<Throwable, String> callback) {
         readAll(file, BUFFER_SIZE)
-            .thenAccept(data -> callback.accept(null, data))
+            .thenAcceptAsync(data -> callback.accept(null, data))
             .exceptionally(err -> {
                 callback.accept(err, null);
                 throw new RuntimeException(err);

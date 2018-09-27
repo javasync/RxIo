@@ -196,13 +196,20 @@ public class AsyncFileReaderTest {
         /**
          * Act and Assert
          */
-        CompletableFuture<Void> p = new CompletableFuture<>();
+        CompletableFuture<Void> p1 = new CompletableFuture<>();
+        CompletableFuture<Void> p2 = new CompletableFuture<>();
         AsyncFiles
                 .readAll(PATH.toString(), (err, actual) -> {
                     assertEquals(expected, actual);
-                    p.complete(null);
+                    p1.complete(null);
                 });
-        p.join();
+        AsyncFiles
+                .readAll(PATH.toString(), (err, actual) -> {
+                    assertEquals(expected, actual);
+                    p2.complete(null);
+                });
+        p1.join();
+        p2.join();
     }
 
     @Test
