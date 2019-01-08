@@ -33,7 +33,7 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
-import java.util.Iterator;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -104,36 +104,38 @@ public abstract class AsyncFileReader {
         /**
          * Notifies subscriber with lines
          */
-        Iterator<String> iter = NEWLINE_INCLUSIVE.splitAsStream(accumulator).iterator();
-        String remaining = null;
-        while(iter.hasNext()) {
-            String line = iter.next();
-            Matcher matcher = NEWLINE.matcher(line);
-            if(!iter.hasNext() && !matcher.find()) {
-                // This is the last sentence and has NO newline char.
-                // So we do not want to notify it in onNext() and
-                // we put it on remaining for the next iteration.
-                remaining = line;
-            } else {
+        Optional<String> remaining = NEWLINE_INCLUSIVE
+            .splitAsStream(accumulator)
+            .reduce((prev, curr) -> {
                 // Remove the newline char.
-                sub.onNext(matcher.replaceFirst(""));
-            }
-        }
+                sub.onNext(NEWLINE.matcher(prev).replaceFirst(""));
+                return curr;
+            })
+            .map(last -> {
+                Matcher matcher = NEWLINE.matcher(last);
+                if (matcher.find())
+                    sub.onNext(matcher.replaceFirst("")); // Remove the newline char.
+                else
+                    // This is the last sentence and has NO newline char.
+                    // So we do not notify it in onNext() and we leave it
+                    // on remaining for the next parseByLineToSubscriber call.
+                    return last;
+                return null;
+            });
         /**
-         * Call readLinesToSubscriber() recursively for the remaining of the string
+         * Call readLinesToSubscriber recursively for the remaining of asyncFile
          */
         if(length < buffer.capacity()) {
             /**
              * Already reaches the end of the file.
              */
-            if(remaining != null)
-                sub.onNext(remaining); // So notify last string
+            remaining.ifPresent(sub::onNext); // So notify last string
             closeAndNotifiesCompletion(asyncFile, sub);
         }
         else {
-            accumulator = remaining == null
-                    ? new StringBuilder()
-                    : new StringBuilder(remaining);
+            accumulator = remaining.isPresent()
+                    ? new StringBuilder(remaining.get())
+                    : new StringBuilder();
             /**
              * Continue reading the file.
              */
