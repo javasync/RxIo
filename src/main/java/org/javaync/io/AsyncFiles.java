@@ -102,7 +102,7 @@ public class AsyncFiles {
      * It automatically closes the underlying AsyncFileChannel when read is complete.
      */
     public static CompletableFuture<String> readAll(String file) {
-        return readAll(file, BUFFER_SIZE);
+        return readAll(Paths.get(file));
     }
 
     /**
