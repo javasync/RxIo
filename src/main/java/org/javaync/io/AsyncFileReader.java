@@ -25,6 +25,7 @@
 
 package org.javaync.io;
 
+import org.javasync.util.NewlineUtils;
 import org.reactivestreams.Subscriber;
 
 import java.io.ByteArrayOutputStream;
@@ -35,8 +36,6 @@ import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.CompletableFuture.completedFuture;
@@ -48,13 +47,6 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * These operations use an underlying AsynchronousFileChannel.
  */
 public abstract class AsyncFileReader {
-    /*
-     * Use {@code (?<=(...))} to include the pattern characters in resulting match.
-     * For instance {@code (?<=(\n))} includes the {@code \n} in resulting string line.
-     */
-    static final Pattern NEWLINE_INCLUSIVE = Pattern.compile("(?<=(\r\n|\n))");
-    static final Pattern NEWLINE = Pattern.compile("(\r\n|\n)");
-
     private AsyncFileReader() {
     }
 
@@ -96,25 +88,19 @@ public abstract class AsyncFileReader {
 
         buffer.rewind(); // set position = 0
         accumulator.append(UTF_8.decode(buffer).limit(length)); // Append buffer to StringBuidler res
-        if(!NEWLINE.matcher(accumulator).find() && length == buffer.capacity()) {
-            // There is NO new line in res string. Thus proceed to read next chunk of bytes.
-            readLinesToSubscriber(asyncFile, position + length, buffer.clear(), accumulator, sub);
-            return;
-        }
+        final boolean finishesWithNewline = accumulator.charAt(accumulator.length() - 1) == '\n';
         /**
-         * Notifies subscriber with lines
+         * Notifies subscriber for each line in accumulator
          */
-        Optional<String> remaining = NEWLINE_INCLUSIVE
-            .splitAsStream(accumulator)
+        Optional<String> remaining = NewlineUtils
+            .splitToStream(accumulator)
             .reduce((prev, curr) -> {
-                // Remove the newline char.
-                sub.onNext(NEWLINE.matcher(prev).replaceFirst(""));
+                sub.onNext(prev);
                 return curr;
             })
             .map(last -> {
-                Matcher matcher = NEWLINE.matcher(last);
-                if (matcher.find())
-                    sub.onNext(matcher.replaceFirst("")); // Remove the newline char.
+                if (finishesWithNewline)
+                    sub.onNext(last);
                 else
                     // This is the last sentence and has NO newline char.
                     // So we do not notify it in onNext() and we leave it
