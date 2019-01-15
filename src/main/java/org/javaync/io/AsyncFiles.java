@@ -89,9 +89,11 @@ public class AsyncFiles {
      * the specified bufferSize capacity.
      */
     public static Publisher<String> lines(int bufferSize, Path file, StandardOpenOption...options) {
-        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-        return sub -> AsyncFileReader.lines(asyncFile, 0, buffer, new StringBuilder(), sub);
+        return sub -> {
+            AsynchronousFileChannel asyncFile = openFileChannel(file, options);
+            ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+            AsyncFileReader.readLinesToSubscriber(asyncFile, 0, buffer, new StringBuilder(), sub);
+        };
     }
 
     /**

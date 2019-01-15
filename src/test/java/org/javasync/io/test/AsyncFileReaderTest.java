@@ -25,17 +25,16 @@
 
 package org.javasync.io.test;
 
-import junit.framework.AssertionFailedError;
+import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
 import org.junit.Test;
-import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
 
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,6 +46,7 @@ import java.util.stream.Stream;
 
 import static java.lang.ClassLoader.getSystemResource;
 import static java.lang.System.lineSeparator;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
@@ -56,7 +56,7 @@ import static org.junit.Assert.fail;
 
 public class AsyncFileReaderTest {
 
-    static final Pattern NEWLINE = Pattern.compile("\n");
+    static final Pattern NEWLINE = Pattern.compile("(\r\n|\n|\r)");
 
     @Test
     public void afwReadLinesWithReactorTest() throws IOException, InterruptedException {
@@ -73,7 +73,7 @@ public class AsyncFileReaderTest {
             Iterator<String> iter = expected.iterator();
             Flux
                     .from(AsyncFiles.lines(8, PATH)) // Act
-                    .doOnNext(line -> assertEquals(iter.next() + "\r", line)) // Assert
+                    .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
                     .blockLast();
             assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
         } finally {
@@ -85,26 +85,25 @@ public class AsyncFileReaderTest {
     public void afwReadLinesTest() throws IOException, InterruptedException {
         final String PATH = "output.txt";
         final List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        Files.write(Paths.get(PATH), expected);
+
+        // User FileWriter rather than Files.write() to put a LF instead of CRLF.
+        try(FileWriter out = new FileWriter(PATH)) {
+            expected.forEach(item -> writeLine(out, item));
+            out.flush();
+        }
         try {
             CompletableFuture<Void> p = new CompletableFuture<>();
             Iterator<String> iter = expected.iterator();
             AsyncFiles
                     .lines(4, PATH)
-                    .subscribe(new Subscriber<String>() {
-                        public void onSubscribe(Subscription s) { }
-                        public void onNext(String item) {
-                            String curr = iter.next() + "\r";
-                            if(!curr.equals(item)) {
-                                String msg = curr + " != " + item;
-                                p.completeExceptionally(new AssertionFailedError(msg));
-                            }
-                        }
-                        public void onError(Throwable throwable) { }
-                        public void onComplete() {
-                            p.complete(null);
-                        }
-                    });
+                    .subscribe(Subscribers
+                        .doOnNext(item -> {
+                            if(p.isDone()) return;
+                            String curr = iter.next();
+                            assertEquals(curr, item);
+                        })
+                        .doOnError(err -> p.completeExceptionally(err))
+                        .doOnComplete(() -> p.complete(null)));
             p.join();
             assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
         } finally {
@@ -112,6 +111,16 @@ public class AsyncFileReaderTest {
         }
     }
 
+    /**
+     * Auxiliary method to force put a LF instead of CRLF.
+     */
+    private void writeLine(FileWriter out, String item) {
+        try {
+            out.write(item + '\n');
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     @Test
     public void afwReadAllBytesTest() throws IOException {
@@ -126,7 +135,8 @@ public class AsyncFileReaderTest {
                     .thenApply(Stream::iterator)
                     .thenAccept(actual -> expected.forEach(l -> {
                             if (actual.hasNext() == false) fail("File does not contain line: " + l);
-                            assertEquals(l + "\r", actual.next());
+                            String curr = actual.next();
+                            assertEquals(l, curr);
                     }))
                     .join();
         }finally {
@@ -142,7 +152,7 @@ public class AsyncFileReaderTest {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         Iterator<String> expected = Files
-                .lines(PATH, StandardCharsets.UTF_8)
+                .lines(PATH, UTF_8)
                 .iterator();
         /**
          * Act and Assert
@@ -154,7 +164,7 @@ public class AsyncFileReaderTest {
                         .forEach(line -> {
                             if(!expected.hasNext())
                                 fail("More items read than expected!");
-                            assertEquals(expected.next() + "\r", line);
+                            assertEquals(expected.next(), line);
                         }))
                 .join();
         if(expected.hasNext())
@@ -170,7 +180,7 @@ public class AsyncFileReaderTest {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         String expected = Files
-                .lines(PATH, StandardCharsets.UTF_8)
+                .lines(PATH, UTF_8)
                 .map(line -> line + lineSeparator())
                 .collect(joining());
         /**
@@ -190,7 +200,7 @@ public class AsyncFileReaderTest {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         String expected = Files
-                .lines(PATH, StandardCharsets.UTF_8)
+                .lines(PATH, UTF_8)
                 .map(line -> line + lineSeparator())
                 .collect(joining());
         /**
@@ -220,19 +230,19 @@ public class AsyncFileReaderTest {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         Iterator<String> expected = Files
-                .lines(PATH, StandardCharsets.UTF_8)
+                .lines(PATH, UTF_8)
                 .iterator();
         /**
          * Act and Assert
          */
         Flux
-                .from(AsyncFiles.lines(PATH.toString())) // Act
+                .from(AsyncFiles.lines(8, PATH.toString())) // Act
                 .doOnError(ex -> fail(ex.getMessage()))
                 .doOnNext(line -> {
                     if(!expected.hasNext())
                         fail("More items read than expected!");
                     String next = expected.next();
-                    assertEquals(next + "\r", line);
+                    assertEquals(next, line);
                 })
                 .blockLast();
         if(expected.hasNext())

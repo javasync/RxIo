@@ -33,8 +33,9 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
-import java.util.Iterator;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -42,100 +43,117 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 
 /**
  * Asynchronous non-blocking read operations with a reactive based API.
- * All read operations return a CompletableFuture with a single String or a
- * Publisher of strings corresponding to lines.
+ * All read operations return a CompletableFuture or a Publisher of
+ * strings corresponding to file lines.
  * These operations use an underlying AsynchronousFileChannel.
  */
 public abstract class AsyncFileReader {
-
-    static final Pattern NEWLINE = Pattern.compile("(?<=(\n))");
+    /*
+     * Use {@code (?<=(...))} to include the pattern characters in resulting match.
+     * For instance {@code (?<=(\n))} includes the {@code \n} in resulting string line.
+     */
+    static final Pattern NEWLINE_INCLUSIVE = Pattern.compile("(?<=(\r\n|\n))");
+    static final Pattern NEWLINE = Pattern.compile("(\r\n|\n)");
 
     private AsyncFileReader() {
     }
 
-    static CompletableFuture<byte[]> lines(
+    /**
+     * Read all bytes from an {@code AsynchronousFileChannel}, which are decoded into characters
+     * using the UTF-8 charset.
+     * The resulting characters are parsed by line and passed to the {@code Subscriber sub}.
+     */
+    static void readLinesToSubscriber(
             AsynchronousFileChannel asyncFile,
             int position,
             ByteBuffer buffer,
             StringBuilder res,
             Subscriber<? super String> sub)
     {
-        return readBytes(asyncFile, buffer, position)
-                .thenCompose(bytes -> parseByLine(asyncFile, bytes, position, buffer, res, sub));
+        readBytesToByteBuffer(asyncFile, buffer, position)
+                .whenComplete((__, err) -> {
+                    if(err != null) sub.onError(err);
+                    else parseByLineToSubscriber(asyncFile, position, buffer, res, sub);
+                });
     }
 
     /**
-     * !!!! Before refactoring this method remember:
-     * "premature optimization is the root of all evil" Donald Knuth
+     * Read bytes from an {@code AsynchronousFileChannel} into the {@code ByteBuffer buffer}
+     * parameter and then copy it to the {@code accumulator}.
+     * For every line in the {@code accumulator} it notifies the {@code sub.onNext()}.
+     * When it reaches the end of file then notifies {@code sub.onComplete()}.
      */
-    static CompletableFuture<byte[]> parseByLine(
-            AsynchronousFileChannel asyncFile, byte[] bytes,
+    static void parseByLineToSubscriber(
+            AsynchronousFileChannel asyncFile,
             int position,
             ByteBuffer buffer,
-            StringBuilder res,
+            StringBuilder accumulator,
             Subscriber<? super String> sub)
     {
-        if(bytes.length == 0)
-            return closeAndNotifiesCompletion(asyncFile, bytes, sub);
+        final int length = buffer.position();
+        if(length == 0)
+            closeAndNotifiesCompletion(asyncFile, sub);
 
-        res.append(new String(bytes, UTF_8));
-        if(res.indexOf("\n") < 0 && bytes.length >= buffer.capacity()) {
+        buffer.rewind(); // set position = 0
+        accumulator.append(UTF_8.decode(buffer).limit(length)); // Append buffer to StringBuidler res
+        if(!NEWLINE.matcher(accumulator).find() && length == buffer.capacity()) {
             // There is NO new line in res string. Thus proceed to read next chunk of bytes.
-            return lines(asyncFile, position + bytes.length, buffer.clear(), res, sub);
+            readLinesToSubscriber(asyncFile, position + length, buffer.clear(), accumulator, sub);
+            return;
         }
         /**
          * Notifies subscriber with lines
          */
-        Iterator<String> iter = NEWLINE.splitAsStream(res).iterator();
-        String remaining = null;
-        while(iter.hasNext()) {
-            String line = iter.next();
-            if(!iter.hasNext() && line.indexOf('\n') < 0) {
-                // This is the last sentence and has NO newline char.
-                // So we do not want to notify it in onNext() and
-                // we put it on remaining for the next iteration.
-                remaining = line;
-            } else {
+        Optional<String> remaining = NEWLINE_INCLUSIVE
+            .splitAsStream(accumulator)
+            .reduce((prev, curr) -> {
                 // Remove the newline char.
-                line = line.substring(0, line.length() - 1);
-                sub.onNext(line);
-            }
-        }
+                sub.onNext(NEWLINE.matcher(prev).replaceFirst(""));
+                return curr;
+            })
+            .map(last -> {
+                Matcher matcher = NEWLINE.matcher(last);
+                if (matcher.find())
+                    sub.onNext(matcher.replaceFirst("")); // Remove the newline char.
+                else
+                    // This is the last sentence and has NO newline char.
+                    // So we do not notify it in onNext() and we leave it
+                    // on remaining for the next parseByLineToSubscriber call.
+                    return last;
+                return null;
+            });
         /**
-         * Call lines() recursively for the remaining of the string
+         * Call readLinesToSubscriber recursively for the remaining of asyncFile
          */
-        if(bytes.length < buffer.capacity()) {
+        if(length < buffer.capacity()) {
             /**
              * Already reaches the end of the file.
              */
-            if(remaining != null)
-                sub.onNext(remaining); // So notify last string
-            return closeAndNotifiesCompletion(asyncFile, bytes, sub);
+            remaining.ifPresent(sub::onNext); // So notify last string
+            closeAndNotifiesCompletion(asyncFile, sub);
         }
         else {
-            res = remaining == null
-                    ? new StringBuilder()
-                    : new StringBuilder(remaining);
+            accumulator = remaining.isPresent()
+                    ? new StringBuilder(remaining.get())
+                    : new StringBuilder();
             /**
              * Continue reading the file.
              */
-            return lines(asyncFile, position + bytes.length, buffer.clear(), res, sub);
+            readLinesToSubscriber(asyncFile, position + length, buffer.clear(), accumulator, sub);
         }
     }
 
-    static CompletableFuture<byte[]> readBytes(
+    static CompletableFuture<Void> readBytesToByteBuffer(
             AsynchronousFileChannel asyncFile,
             ByteBuffer buffer,
             int position)
     {
-        CompletableFuture<byte[]> promise = new CompletableFuture<>();
+        CompletableFuture<Void> promise = new CompletableFuture<>();
         asyncFile.read(buffer, position, buffer, new CompletionHandler<Integer, ByteBuffer>() {
             @Override
             public void completed(Integer result, ByteBuffer attachment) {
-                attachment.flip();
-                byte[] data = new byte[attachment.limit()]; // limit = result
-                attachment.get(data);
-                promise.complete(data);
+                // Note that attachment.limit() is equal to result
+                promise.complete(null);
             }
 
             @Override
@@ -187,14 +205,13 @@ public abstract class AsyncFileReader {
         return promise;
     }
 
-    static CompletableFuture<byte[]> closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, byte[] bytes, Subscriber<? super String> sub) {
+    static void closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, Subscriber<? super String> sub) {
         try {
             asyncFile.close();
             sub.onComplete(); // Successful terminal state.
         } catch (IOException e) {
             sub.onError(e); // Failed terminal state.
         }
-        return completedFuture(bytes);
     }
 
     static void write(ByteArrayOutputStream out, byte[] data) {
