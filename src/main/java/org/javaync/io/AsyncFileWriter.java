@@ -34,6 +34,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 
 import static java.nio.ByteBuffer.wrap;
+import static java.nio.channels.AsynchronousFileChannel.open;
 
 /**
  * Asynchronous non-blocking write operations with a CompletableFuture based API.
@@ -53,8 +54,8 @@ public class AsyncFileWriter implements AutoCloseable{
         this.asyncFile = asyncFile;
     }
 
-    public AsyncFileWriter(Path file, StandardOpenOption...options) {
-        this(AsyncFiles.openFileChannel(file, options));
+    public AsyncFileWriter(Path file, StandardOpenOption...options) throws IOException {
+        this(open(file, options));
     }
 
 

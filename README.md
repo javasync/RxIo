@@ -23,7 +23,7 @@ simply add this dependency:
 <dependency>
     <groupId>com.github.javasync</groupId>
     <artifactId>AsyncFileRw</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.3</version>
 </dependency>
 ```
 

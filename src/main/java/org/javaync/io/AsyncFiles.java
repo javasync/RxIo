@@ -174,10 +174,14 @@ public class AsyncFiles {
         ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-        return AsyncFileReader
-                .readAllBytes(asyncFile, buffer, 0, out)
-                .whenComplete((pos, ex) -> closeAfc(asyncFile))
-                .thenApply(position -> out.toByteArray());
+        CompletableFuture<byte[]> bytes = AsyncFileReader
+            .readAllBytes(asyncFile, buffer, 0, out)
+            .thenApply(position -> out.toByteArray());
+        /**
+         * Deliberately chained in this way.
+         */
+        bytes.whenCompleteAsync((pos, ex) -> closeAfc(asyncFile));
+        return bytes;
     }
 
     /**
