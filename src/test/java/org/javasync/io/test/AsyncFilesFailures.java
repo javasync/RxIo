@@ -26,28 +26,28 @@ package org.javasync.io.test;
 
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Stream;
 
 import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
-import static java.nio.file.Files.lines;
 import static java.util.Arrays.asList;
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -56,6 +56,43 @@ import static org.junit.Assert.fail;
 
 public class AsyncFilesFailures {
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+
+    @Test
+    public void readAllNoSuchFile() {
+        AsyncFiles
+            .readAllBytes(Paths.get("non-existent-file.sgf"))
+            .whenComplete((pos, err) -> {
+                    if(err == null)
+                        fail("It should fail reading an nonexistent!");
+                    else
+                        Assert.assertThat(err, instanceOf(NoSuchFileException.class));
+                });
+    }
+
+    @Test
+    public void readAllLinesNoSuchFile() {
+        AsyncFiles
+            .lines("non-existent-file.sgf")
+            .subscribe(Subscribers
+                        .doOnNext(line ->
+                            fail("It should fail reading an nonexistent!")
+                        )
+                        .doOnError(err ->
+                            Assert.assertThat(err, instanceOf(NoSuchFileException.class))
+                        ));
+    }
+
+    @Test
+    public void readAllToCallbackNoSuchFile() {
+        AsyncFiles
+            .readAll("non-existent-file.sgf", (err, data) -> {
+                    if(err == null || data != null)
+                        fail("It should fail reading an nonexistent!");
+                    else
+                        Assert.assertThat(err, instanceOf(NoSuchFileException.class));
+            });
+    }
+
 
     @Test
     public void concurrentReadLines() throws IOException, ExecutionException, InterruptedException {
@@ -110,9 +147,10 @@ public class AsyncFilesFailures {
     }
 
     @Test
-    public void concurrentWriteLines() throws IOException {
+    public void concurrentWriteLines() throws IOException, URISyntaxException {
         final Path OUTPUT = Paths.get("dummy2.txt");
-        final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massive");
+        Stream<String> lines = Files.lines(Paths.get(METAMORPHOSIS.toURI()));
+        Iterable<String> expected = () -> lines.iterator();
         try {
             CompletableFuture<Integer> p = AsyncFiles.write(OUTPUT, expected);
             openLock(OUTPUT);
@@ -127,12 +165,37 @@ public class AsyncFilesFailures {
     }
 
     @Test
-    public void concurrentWriteLinesOnOpen() throws IOException {
+    public void concurrentBytesLinesOnOpen() throws IOException {
         final Path OUTPUT = Paths.get("dummy3.txt");
         Files.write(OUTPUT, "ola".getBytes(), StandardOpenOption.CREATE);
         try {
-            AsyncFiles.writeBytes(OUTPUT, null);
-            fail("It should fail creating a file that already exists");
+            AsyncFiles
+                .writeBytes(OUTPUT, null)
+                .whenComplete((pos, err) -> {
+                    if(err == null)
+                        fail("It should fail creating a file that already exists");
+                    else
+                        Assert.assertThat(err, instanceOf(IOException.class));
+                });
+        }
+        finally {
+            delete(OUTPUT);
+        }
+    }
+
+    @Test
+    public void concurrentWriteLinesOnOpen() throws IOException {
+        final Path OUTPUT = Paths.get("dummy4.txt");
+        Files.write(OUTPUT, "ola".getBytes(), StandardOpenOption.CREATE);
+        try {
+            AsyncFiles
+                .write(OUTPUT, null)
+                .whenComplete((pos, err) -> {
+                    if(err == null)
+                        fail("It should fail creating a file that already exists");
+                    else
+                        Assert.assertThat(err, instanceOf(IOException.class));
+                });
         }
         finally {
             delete(OUTPUT);

@@ -90,9 +90,13 @@ public class AsyncFiles {
      */
     public static Publisher<String> lines(int bufferSize, Path file, StandardOpenOption...options) {
         return sub -> {
-            AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-            ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-            AsyncFileReader.readLinesToSubscriber(asyncFile, 0, buffer, new StringBuilder(), sub);
+            try {
+                AsynchronousFileChannel asyncFile = open(file, options);
+                ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+                AsyncFileReader.readLinesToSubscriber(asyncFile, 0, buffer, new StringBuilder(), sub);
+            } catch (IOException e) {
+                sub.onError(e);
+            }
         };
     }
 
@@ -113,10 +117,9 @@ public class AsyncFiles {
      */
     public static void readAll(String file, BiConsumer<Throwable, String> callback) {
         readAll(file, BUFFER_SIZE)
-            .thenAcceptAsync(data -> callback.accept(null, data))
-            .exceptionally(err -> {
-                callback.accept(err, null);
-                throw new RuntimeException(err);
+            .whenComplete((data, err) -> {
+                if(err != null) callback.accept(err, null);
+                else callback.accept(null, data);
             });
     }
 
@@ -171,17 +174,22 @@ public class AsyncFiles {
             int bufferSize,
             StandardOpenOption...options)
     {
-        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        AsynchronousFileChannel asyncFile = openFileChannel(file, options);
-        CompletableFuture<byte[]> bytes = AsyncFileReader
-            .readAllBytes(asyncFile, buffer, 0, out)
-            .thenApply(position -> out.toByteArray());
-        /**
-         * Deliberately chained in this way.
-         */
-        bytes.whenCompleteAsync((pos, ex) -> closeAfc(asyncFile));
-        return bytes;
+        try {
+            ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            AsynchronousFileChannel asyncFile = open(file, options);
+            CompletableFuture<byte[]> bytes = AsyncFileReader
+                .readAllBytes(asyncFile, buffer, 0, out)
+                .thenApply(position -> out.toByteArray());
+            /**
+             * Deliberately chained in this way.
+             * Code smell: If closeAfc throws an Exception it will be lost!
+             */
+            bytes.whenCompleteAsync((pos, ex) -> closeAfc(asyncFile));
+            return bytes;
+        } catch (IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     /**
@@ -206,9 +214,10 @@ public class AsyncFiles {
      * Writes bytes to a file.
      * The options parameter specifies how the file is created or opened.
      * All bytes in the byte array are written to the file.
-     * The method ensures that the file is closed when all bytes have been
-     * written (or an I/O error or other runtime exception is thrown).
-     * Returns a CompletableFuture with the final file index
+     * The method ensures that the underlying {@code AsynchronousFileChannel}
+     * is closed when all bytes have been written (or an I/O error or any other
+     * runtime exception is thrown).
+     * Returns a {@code CompletableFuture} with the final file index
      * after the completion of the corresponding write operation.
      * If an I/O error occurs then it may complete the resulting CompletableFuture
      * exceptionally.
@@ -224,7 +233,7 @@ public class AsyncFiles {
             // a continuation to close the AsyncFileChannel only after completion.
             return writer.getPosition();
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            return CompletableFuture.failedFuture(e);
         }
     }
 
@@ -248,7 +257,7 @@ public class AsyncFiles {
      * is written to the file in sequence with each line terminated by
      * the platform's line separator, as defined by the system property
      * line.separator.
-     * Returns a CompletableFuture with the final file index
+     * Returns a {@code CompletableFuture} with the final file index
      * after the completion of the corresponding write operation.
      */
     public static CompletableFuture<Integer> write(
@@ -262,19 +271,9 @@ public class AsyncFiles {
             // a continuation to close the AsyncFileChannel only after completion.
             return writer.getPosition();
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            return CompletableFuture.failedFuture(e);
         }
     }
-
-
-    static AsynchronousFileChannel openFileChannel(Path file, StandardOpenOption[] options) {
-        try {
-            return open(file, options);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
 
     static void closeAfc(AsynchronousFileChannel asyncFile) {
         try {
