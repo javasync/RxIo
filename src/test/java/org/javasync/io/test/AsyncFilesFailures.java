@@ -47,6 +47,7 @@ import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -55,6 +56,7 @@ import static org.junit.Assert.fail;
 
 public class AsyncFilesFailures {
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+    static final URL UTF_8_INVALID = getSystemResource("UTF-8-test.txt");
 
     @Test
     public void readAllNoSuchFile() {
@@ -199,6 +201,20 @@ public class AsyncFilesFailures {
         finally {
             delete(OUTPUT);
         }
+    }
+
+    @Test(expected = CompletionException.class)
+    public void readLinesWithInvalidBytes() throws URISyntaxException {
+        Path PATH = Paths.get(UTF_8_INVALID.toURI());
+        CompletableFuture<Void> p = new CompletableFuture<>();
+        AsyncFiles
+                .lines(4, PATH)
+                .subscribe(Subscribers
+                        .doOnNext((item) -> {})
+                        .doOnError(p::completeExceptionally)
+                        .doOnComplete(() -> p.complete(null))
+                );
+        p.join();
     }
 
     private static void openLock(Path output) {
