@@ -48,7 +48,6 @@ import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;

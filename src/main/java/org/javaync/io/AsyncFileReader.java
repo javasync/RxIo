@@ -46,7 +46,8 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * strings corresponding to file lines.
  * These operations use an underlying AsynchronousFileChannel.
  */
-public abstract class AsyncFileReader {
+public class AsyncFileReader {
+
     private AsyncFileReader() {
     }
 
@@ -63,7 +64,7 @@ public abstract class AsyncFileReader {
             Subscriber<? super String> sub)
     {
         readBytesToByteBuffer(asyncFile, buffer, position)
-                .whenComplete((__, err) -> {
+                .whenComplete((data, err) -> {
                     if(err != null) sub.onError(err);
                     else parseByLineToSubscriber(asyncFile, position, buffer, res, sub);
                 });

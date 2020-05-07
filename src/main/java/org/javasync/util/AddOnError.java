@@ -1,7 +1,6 @@
 package org.javasync.util;
 
 import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
 
 import java.util.function.Consumer;
 
@@ -18,7 +17,7 @@ public class AddOnError<T> extends SubscriberBuilder<T> implements Subscriber<T>
     public void onNext(T item) {
         try{
             super.onNext(item);
-        } catch (Throwable err) {
+        } catch (Exception err) {
             this.onError(err);
         }
     }

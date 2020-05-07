@@ -38,8 +38,8 @@ public class NewlineIterator extends Spliterators.AbstractSpliterator<String> {
     static final Pattern NEWLINE = Pattern.compile("\r?\n|\n");
 
     private int index = 0;
-    final private CharSequence input;
-    final private Matcher m;
+    private final CharSequence input;
+    private final Matcher m;
 
     protected NewlineIterator(CharSequence input) {
         super(Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.SIZED);

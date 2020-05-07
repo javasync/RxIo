@@ -29,6 +29,10 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 public class NewlineUtils {
+
+    private NewlineUtils() {
+    }
+
     /**
      * Maybe this produces the same behavior of the following use, but I am not
      * sure which one is the most performant.

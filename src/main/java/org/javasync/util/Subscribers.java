@@ -32,6 +32,6 @@ public class Subscribers {
     }
 
     public static <T> SubscriberBuilder<T> doOnNext(Consumer<T> cons){
-        return new AddOnNext(cons);
+        return new AddOnNext<>(cons);
     }
 }

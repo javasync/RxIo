@@ -22,10 +22,10 @@ public class SubscriberBuilder<T> implements Subscriber<T> {
     }
 
     public SubscriberBuilder<T> doOnComplete(Runnable action) {
-        return new AddOnComplete(action, this);
+        return new AddOnComplete<>(action, this);
     }
 
-        @Override
+    @Override
     public void onSubscribe(Subscription subscription) {
         sub.onSubscribe(subscription);
     }
