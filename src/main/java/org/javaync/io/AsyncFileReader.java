@@ -34,6 +34,9 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -48,6 +51,9 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  */
 public class AsyncFileReader {
 
+    private static final CharsetDecoder decoder = UTF_8.newDecoder()
+                                            .onMalformedInput(CodingErrorAction.REPORT)
+                                            .onUnmappableCharacter(CodingErrorAction.REPORT);
     private AsyncFileReader() {
     }
 
@@ -87,8 +93,7 @@ public class AsyncFileReader {
         if(length == 0)
             closeAndNotifiesCompletion(asyncFile, sub);
 
-        buffer.rewind(); // set position = 0
-        accumulator.append(UTF_8.decode(buffer).limit(length)); // Append buffer to StringBuidler res
+        appendBuffer(accumulator, buffer, sub, length);
         final boolean finishesWithNewline = accumulator.charAt(accumulator.length() - 1) == '\n';
         /**
          * Notifies subscriber for each line in accumulator
@@ -206,6 +211,19 @@ public class AsyncFileReader {
             out.write(data);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void appendBuffer(StringBuilder accumulator, ByteBuffer buffer, Subscriber<? super String> sub, int length) {
+        buffer.rewind(); // set position = 0
+        try {
+            accumulator.append(
+                    decoder
+                            .decode(buffer)
+                            .limit(length)
+            );
+        } catch (CharacterCodingException e) {
+            sub.onError(e);
         }
     }
 }
