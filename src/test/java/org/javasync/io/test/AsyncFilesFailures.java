@@ -47,7 +47,6 @@ import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
-import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
