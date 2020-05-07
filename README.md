@@ -20,16 +20,12 @@ First, in order to include it to yourproject,
 simply add this dependency:
 
 <table>
-    <tr>
-        <th>
-            Maven
-        </th>
-        <th>
-            Gradle
-        </th>
-    </tr>
-    <tr>
-        <td>
+<tr>
+<th>Maven</th>
+<th>Gradle</th>
+</tr>
+<tr>
+<td>
 
 ```xml
 <dependency> 
@@ -54,9 +50,9 @@ dependencies {
 
 ## Usage
 
-<table class="table">
-    <tr class="row">
-        <td>
+<table>
+<tr>
+<td>
 
 ```java
 
@@ -107,7 +103,7 @@ Files.write(out, bytes);
 ```
 
 </td>
-<tr>
+</tr>
 <tr>
 <td>
 
@@ -135,7 +131,7 @@ Files
 ```
 
 </td>
-<tr>
+</tr>
 </table>
 
 The [`AsyncFiles::lines()`](src/main/java/org/javaync/io/AsyncFiles.java#L63)
