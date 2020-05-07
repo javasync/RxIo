@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.javasync</groupId>
-    <artifactId>AsyncFileRw</artifactId>
+    <artifactId>RxIo</artifactId>
     <version>1.1.3-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>
@@ -14,7 +14,7 @@
         This is an equivalent to the standard JDK Files class but using 
         non-blocking IO.
     </description>
-    <url>https://github.com/javasync/AsyncFileRw</url>
+    <url>https://github.com/javasync/RxIo</url>
     <licenses>
         <license>
             <name>MIT license</name>
@@ -30,9 +30,9 @@
         </developer>
     </developers>
     <scm>
-        <connection>scm:git:git@github.com:javasync/AsyncFileRw.git</connection>
-        <developerConnection>scm:git:git@github.com:javasync/AsyncFileRw.git</developerConnection>
-        <url>https://github.com/javasync/AsyncFileRw.git</url>
+        <connection>scm:git:git@github.com:javasync/RxIo.git</connection>
+        <developerConnection>scm:git:git@github.com:javasync/RxIo.git</developerConnection>
+        <url>https://github.com/javasync/RxIo.git</url>
         <tag>HEAD</tag>
     </scm>
     <distributionManagement>
