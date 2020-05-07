@@ -1,7 +1,7 @@
 # RxIo
 
 [![Build Status](https://sonarcloud.io/api/project_badges/measure?project=com.github.javasync%3AAsyncFileRw&metric=alert_status)](https://sonarcloud.io/dashboard?id=com.github.javasync%3AAsyncFileRw)
-[![Maven Central Version](https://img.shields.io/maven-central/v/com.github.javasync/AsyncFileRw.svg)](https://search.maven.org/#search%7Cga%7C1%7Ca%3A%22AsyncFileRw%22)
+[![Maven Central Version](https://img.shields.io/maven-central/v/com.github.javasync/RxIo.svg)](https://search.maven.org/#search%7Cga%7C1%7Ca%3A%22RxIo%22)
 [![Coverage Status](https://sonarcloud.io/api/project_badges/measure?project=com.github.javasync%3AAsyncFileRw&metric=coverage)](https://sonarcloud.io/component_measures?id=com.github.javasync%3AAsyncFileRw&metric=Coverage)
 
 The [`AsyncFiles`](src/main/java/org/javaync/io/AsyncFiles.java) class allows Java
