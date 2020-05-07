@@ -42,6 +42,7 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -112,6 +113,27 @@ public class AsyncFileReaderTest {
         }
     }
 
+    @Test(expected = CompletionException.class)
+    public void afwReadLinesWithInvalidBytesTest() {
+        final String PATH = "UTF-8-test.txt";
+        CompletableFuture<Void> p = new CompletableFuture<>();
+        AsyncFiles
+                .lines(4, PATH)
+                .subscribe(new Subscriber<String>() {
+                    public void onSubscribe(Subscription s) { }
+
+                    public void onNext(String item) { }
+
+                    public void onError(Throwable throwable) {
+                        p.completeExceptionally(throwable);
+                    }
+
+                    public void onComplete() {
+                        p.complete(null);
+                    }
+                });
+        p.join();
+    }
 
     @Test
     public void afwReadAllBytesTest() throws IOException {

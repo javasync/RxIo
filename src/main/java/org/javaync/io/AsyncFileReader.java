@@ -33,6 +33,8 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
@@ -78,7 +80,17 @@ public abstract class AsyncFileReader {
         if(bytes.length == 0)
             return closeAndNotifiesCompletion(asyncFile, bytes, sub);
 
-        res.append(new String(bytes, UTF_8));
+        try {
+            res.append(
+                    UTF_8.newDecoder()
+                            .onMalformedInput(CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(CodingErrorAction.REPORT)
+                            .decode(ByteBuffer.wrap(bytes))
+            );
+        } catch (CharacterCodingException e) {
+            sub.onError(e);
+        }
+
         if(res.indexOf("\n") < 0 && bytes.length >= buffer.capacity()) {
             // There is NO new line in res string. Thus proceed to read next chunk of bytes.
             return lines(asyncFile, position + bytes.length, buffer.clear(), res, sub);
