@@ -16,7 +16,7 @@ class side by side with the corresponding blocking version of
 
 ## Installation
 
-First, in order to include it to yourproject,
+First, in order to include it to your project,
 simply add this dependency:
 
 <table>

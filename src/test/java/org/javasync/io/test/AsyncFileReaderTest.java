@@ -59,6 +59,8 @@ public class AsyncFileReaderTest {
     static final Pattern NEWLINE = Pattern.compile("(\r\n|\n|\r)");
     static final String OUTPUT = "output.txt";
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
+    static final URL WIZARD = getSystemResource("The-Wizard-by-Rider-Haggard.txt");
+
     @Test
     public void readLinesWith8BytesBufferToReactorFlux() throws IOException {
         /**
@@ -177,7 +179,7 @@ public class AsyncFileReaderTest {
         /**
          * Arrange
          */
-        Path PATH = Paths.get(METAMORPHOSIS.toURI());
+        Path PATH = Paths.get(WIZARD.toURI());
         Iterator<String> expected = Files
             .lines(PATH, UTF_8)
             .iterator();
