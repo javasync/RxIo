@@ -186,18 +186,21 @@ public class AsyncFileReaderTest {
         /**
          * Act and Assert
          */
-        CompletableFuture<Void> p = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+        CompletableFuture<Void> completed = new CompletableFuture<>();
         AsyncFiles
                 .lines(PATH.toString())
                 .subscribe(Subscribers
                         .doOnNext(item -> {
-                            if(p.isDone()) return;
+                            if(completed.isDone()) return;
                             String curr = expected.next();
                             assertEquals(curr, item);
                         })
-                        .doOnError(err -> p.completeExceptionally(err))
-                        .doOnComplete(() -> p.complete(null)));
-            p.join();
+                        .doOnSubscribe(sign -> started.complete(null))
+                        .doOnError(err -> completed.completeExceptionally(err))
+                        .doOnComplete(() -> completed.complete(null)));
+            completed.join();
+            assertEquals(true, started.isDone());
             assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
     }
 

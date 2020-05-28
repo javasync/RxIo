@@ -25,7 +25,6 @@
 
 package org.javaync.io;
 
-import org.javasync.util.NewlineUtils;
 import org.reactivestreams.Subscriber;
 
 import java.io.ByteArrayOutputStream;
@@ -34,13 +33,11 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.util.Optional;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidParameterException;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.ObjIntConsumer;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
 /**
@@ -50,10 +47,11 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * These operations use an underlying AsynchronousFileChannel.
  */
 public class AsyncFileReader {
+    static final int BUFFER_SIZE= 4096*8;
+    private static final int MAX_LINE_SIZE = 4096;
+    private static final int LF = '\n';
+    private static final int CR = '\r';
 
-    private static final CharsetDecoder decoder = UTF_8.newDecoder()
-                                            .onMalformedInput(CodingErrorAction.REPORT)
-                                            .onUnmappableCharacter(CodingErrorAction.REPORT);
     private AsyncFileReader() {
     }
 
@@ -61,99 +59,111 @@ public class AsyncFileReader {
      * Read all bytes from an {@code AsynchronousFileChannel}, which are decoded into characters
      * using the UTF-8 charset.
      * The resulting characters are parsed by line and passed to the {@code Subscriber sub}.
+     * @param asyncFile the nio associated file channel.
+     * @param bufferSize
+     * @param sub subscriber for resulting publisher.
+     * @param sign the subscription.
      */
     static void readLinesToSubscriber(
-            AsynchronousFileChannel asyncFile,
-            int position,
-            ByteBuffer buffer,
-            StringBuilder res,
-            Subscriber<? super String> sub)
+        AsynchronousFileChannel asyncFile,
+        int bufferSize,
+        Subscriber<? super String> sub,
+        ReaderSubscription sign)
     {
-        readBytesToByteBuffer(asyncFile, buffer, position)
-                .whenComplete((data, err) -> {
-                    if(err != null) sub.onError(err);
-                    else parseByLineToSubscriber(asyncFile, position, buffer, res, sub);
-                });
+        readLinesToSubscriber(asyncFile, 0, 0, 0, new byte[bufferSize], new byte[MAX_LINE_SIZE], 0, sub, sign);
     }
 
     /**
-     * Read bytes from an {@code AsynchronousFileChannel} into the {@code ByteBuffer buffer}
-     * parameter and then copy it to the {@code accumulator}.
-     * For every line in the {@code accumulator} it notifies the {@code sub.onNext()}.
-     * When it reaches the end of file then notifies {@code sub.onComplete()}.
+     * Read all bytes from an {@code AsynchronousFileChannel}, which are decoded into characters
+     * using the UTF-8 charset.
+     * The resulting characters are parsed by line and passed to the {@code Subscriber sub}.
+     *
+     * @param asyncFile the nio associated file channel.
+     * @param position current read or write position in file.
+     * @param bufpos read position in buffer.
+     * @param bufsize total bytes in buffer.
+     * @param buffer buffer for current producing line.
+     * @param auxline the transfer buffer.
+     * @param linepos current position in producing line.
+     * @param sub subscriber for resulting publisher.
+     * @param sign subscription.
      */
-    static void parseByLineToSubscriber(
+    static void readLinesToSubscriber(
             AsynchronousFileChannel asyncFile,
-            int position,
-            ByteBuffer buffer,
-            StringBuilder accumulator,
-            Subscriber<? super String> sub)
+            long position,
+            int bufpos,
+            int bufsize,
+            byte[] buffer,
+            byte[] auxline,
+            int linepos,
+            Subscriber<? super String> sub,
+            ReaderSubscription sign)
     {
-        final int length = buffer.position();
-        if(length == 0)
-            closeAndNotifiesCompletion(asyncFile, sub);
-
-        appendBuffer(accumulator, buffer, sub, length);
-        final boolean finishesWithNewline = accumulator.charAt(accumulator.length() - 1) == '\n';
-        /**
-         * Notifies subscriber for each line in accumulator
-         */
-        Optional<String> remaining = NewlineUtils
-            .splitToStream(accumulator)
-            .reduce((prev, curr) -> {
-                sub.onNext(prev);
-                return curr;
-            })
-            .map(last -> {
-                if (finishesWithNewline)
-                    sub.onNext(last);
-                else
-                    // This is the last sentence and has NO newline char.
-                    // So we do not notify it in onNext() and we leave it
-                    // on remaining for the next parseByLineToSubscriber call.
-                    return last;
-                return null;
-            });
-        /**
-         * Call readLinesToSubscriber recursively for the remaining of asyncFile
-         */
-        if(length < buffer.capacity()) {
-            /**
-             * Already reaches the end of the file.
-             */
-            remaining.ifPresent(sub::onNext); // So notify last string
-            closeAndNotifiesCompletion(asyncFile, sub);
+        while(bufpos < bufsize) {
+            if (buffer[bufpos] == LF) {
+                if (linepos > 0 && auxline[linepos-1] == CR) linepos--;
+                bufpos++;
+                sub.onNext(produceLine(auxline, linepos));
+                linepos = 0;
+            }
+            else if (linepos == MAX_LINE_SIZE -1) {
+                sub.onNext(produceLine(auxline, linepos));
+                linepos = 0;
+            }
+            else auxline[linepos++] = buffer[bufpos++];
         }
-        else {
-            accumulator = remaining.isPresent()
-                    ? new StringBuilder(remaining.get())
-                    : new StringBuilder();
-            /**
-             * Continue reading the file.
-             */
-            readLinesToSubscriber(asyncFile, position + length, buffer.clear(), accumulator, sub);
-        }
+        int lastLinePos = linepos;
+        readBytes(asyncFile, position, buffer, 0, buffer.length, (err, res) -> {
+            if(err != null) {
+                sub.onError(err);
+                return;
+            }
+            long next = position;
+            if (res > 0) next += res;
+            if (res <= 0) {
+                // needed for last line that doesn't end with LF
+                if (lastLinePos > 0) {
+                   sub.onNext(produceLine(auxline, lastLinePos));
+                }
+                closeAndNotifiesCompletion(asyncFile, sub);
+                return;
+            }
+            readLinesToSubscriber(asyncFile, next, 0, res, buffer, auxline, lastLinePos, sub, sign);
+        });
     }
 
-    static CompletableFuture<Void> readBytesToByteBuffer(
-            AsynchronousFileChannel asyncFile,
-            ByteBuffer buffer,
-            int position)
+    /**
+     * Asynchronous read chunk operation, callback based.
+     */
+    public static void readBytes(
+        AsynchronousFileChannel asyncFile,
+        long position,
+        byte[] data,
+        int ofs,
+        int size,
+        ObjIntConsumer<Throwable> completed)
     {
-        CompletableFuture<Void> promise = new CompletableFuture<>();
-        asyncFile.read(buffer, position, buffer, new CompletionHandler<Integer, ByteBuffer>() {
-            @Override
-            public void completed(Integer result, ByteBuffer attachment) {
-                // Note that attachment.limit() is equal to result
-                promise.complete(null);
-            }
-
-            @Override
-            public void failed(Throwable exc, ByteBuffer attachment) {
-                promise.completeExceptionally(exc);
-            }
-        });
-        return promise;
+        if (completed == null)
+            throw new InvalidParameterException("callback can't be null!");
+        if (size + ofs > data.length)
+            size = data.length - ofs;
+        if (size ==0) {
+            completed.accept(null, 0);
+            return;
+        }
+        ByteBuffer buf = ByteBuffer.wrap(data, ofs, size);
+        CompletionHandler<Integer,Object> readCompleted =
+                new CompletionHandler<Integer,Object>() {
+                    @Override
+                    public void completed(Integer result, Object attachment) {
+                        completed.accept(null, result);
+                    }
+                    @Override
+                    public void failed(Throwable exc, Object attachment) {
+                        completed.accept(exc, 0);
+                    }
+                };
+        asyncFile.read(buf, position, null, readCompleted);
     }
 
     static CompletableFuture<Integer> readAllBytes(
@@ -214,16 +224,11 @@ public class AsyncFileReader {
         }
     }
 
-    private static void appendBuffer(StringBuilder accumulator, ByteBuffer buffer, Subscriber<? super String> sub, int length) {
-        buffer.rewind(); // set position = 0
-        try {
-            accumulator.append(
-                    decoder
-                            .decode(buffer)
-                            .limit(length)
-            );
-        } catch (CharacterCodingException e) {
-            sub.onError(e);
-        }
+    /**
+     * @param auxline the transfer buffer.
+     * @param linepos current position in producing line.
+     */
+    private static String produceLine(byte[] auxline, int linepos) {
+        return new String(auxline, 0, linepos, StandardCharsets.UTF_8);
     }
 }
