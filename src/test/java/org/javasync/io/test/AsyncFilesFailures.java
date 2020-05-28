@@ -95,7 +95,7 @@ public class AsyncFilesFailures {
 
 
     @Test
-    public void concurrentReadLines() throws IOException, ExecutionException, InterruptedException {
+    public void concurrentReadLines() throws IOException {
         /**
          * Arrange
          */
@@ -202,7 +202,12 @@ public class AsyncFilesFailures {
         }
     }
 
-    @Test(expected = CompletionException.class)
+    /**
+     * From release 1.1.4 there is no more error reading invalid characters.
+     * Keeping this test for an eventual future issue.
+     */
+    // @Test(expected = CompletionException.class)
+    @Test
     public void readLinesWithInvalidBytes() throws URISyntaxException {
         Path PATH = Paths.get(UTF_8_INVALID.toURI());
         CompletableFuture<Void> p = new CompletableFuture<>();
@@ -210,8 +215,10 @@ public class AsyncFilesFailures {
                 .lines(4, PATH)
                 .subscribe(Subscribers
                         .doOnNext((item) -> {})
-                        .doOnError(p::completeExceptionally)
-                        .doOnComplete(() -> p.complete(null))
+                        .doOnError(err -> fail())
+                        .doOnComplete(() ->
+                            p.complete(null)
+                        )
                 );
         p.join();
     }

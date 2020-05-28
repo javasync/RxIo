@@ -52,17 +52,23 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class AsyncFiles {
 
-    static final int BUFFER_SIZE = 262144;
-
     private AsyncFiles() {
     }
 
     /**
      * Reads the given file from the beginning using an AsyncFileChannel
-     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
      */
     public static Publisher<String> lines(String file) {
-        return lines(BUFFER_SIZE, Paths.get(file));
+        return lines(Paths.get(file));
+    }
+
+    /**
+     * Reads the given file from the beginning using an AsyncFileChannel
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
+     */
+    public static Publisher<String> lines(Path file) {
+        return lines(AsyncFileReader.BUFFER_SIZE, file);
     }
 
     /**
@@ -92,8 +98,9 @@ public class AsyncFiles {
         return sub -> {
             try {
                 AsynchronousFileChannel asyncFile = open(file, options);
-                ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-                AsyncFileReader.readLinesToSubscriber(asyncFile, 0, buffer, new StringBuilder(), sub);
+                ReaderSubscription sign = new ReaderSubscription();
+                sub.onSubscribe(sign);
+                AsyncFileReader.readLinesToSubscriber(asyncFile, bufferSize, sub, sign);
             } catch (IOException e) {
                 sub.onError(e);
             }
@@ -102,7 +109,7 @@ public class AsyncFiles {
 
     /**
      * Reads the file from the beginning using an AsyncFileChannel
-     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
      * It automatically closes the underlying AsyncFileChannel when read is complete.
      */
     public static CompletableFuture<String> readAll(String file) {
@@ -112,11 +119,11 @@ public class AsyncFiles {
     /**
      * A callback based version of readAll().
      * Reads the file from the beginning using an AsyncFileChannel
-     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
      * It automatically closes the underlying AsyncFileChannel when read is complete.
      */
     public static void readAll(String file, BiConsumer<Throwable, String> callback) {
-        readAll(file, BUFFER_SIZE)
+        readAll(file, AsyncFileReader.BUFFER_SIZE)
             .whenComplete((data, err) -> {
                 if(err != null) callback.accept(err, null);
                 else callback.accept(null, data);
@@ -136,12 +143,12 @@ public class AsyncFiles {
 
     /**
      * Reads the file from the beginning using an AsyncFileChannel
-     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
      * It automatically closes the underlying AsyncFileChannel
      * when read is complete.
      */
     public static CompletableFuture<String> readAll(Path file) {
-        return readAll(file, BUFFER_SIZE);
+        return readAll(file, AsyncFileReader.BUFFER_SIZE);
     }
 
     /**
@@ -158,10 +165,10 @@ public class AsyncFiles {
 
     /**
      * Reads all bytes from the beginning of the file using an AsyncFileChannel
-     * with a ByteBuffer of {@link AsyncFiles#BUFFER_SIZE BUFFER_SIZE} capacity.
+     * with a ByteBuffer of {@link AsyncFileReader#BUFFER_SIZE BUFFER_SIZE} capacity.
      */
     public static CompletableFuture<byte[]> readAllBytes(Path file) {
-        return readAllBytes(file, BUFFER_SIZE);
+        return readAllBytes(file, AsyncFileReader.BUFFER_SIZE);
     }
 
     /**

@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2019, Miguel Gamboa (gamboa.pt)
+ * Copyright (c) 2020, Miguel Gamboa (gamboa.pt)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,31 +22,22 @@
  * SOFTWARE.
  */
 
-package org.javasync.util;
+package org.javaync.io;
 
-import java.util.Spliterator;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
+import org.reactivestreams.Subscription;
 
-public class NewlineUtils {
-
-    private NewlineUtils() {
+public class ReaderSubscription implements Subscription {
+    @Override
+    public void request(long l) {
+        /**
+         * !!! To do !!! For now we are not supporting back pressure.
+         */
     }
 
-    /**
-     * Maybe this produces the same behavior of the following use, but I am not
-     * sure which one is the most performant.
-     * I think my own implementations has less overhead.
-     * <pre>{@code
-     * Pattern
-     *     .compile("(.*)\\R")
-     *     .matcher(input)
-     *     .results()
-     *     .map(mr -> mr.group(1));
-     * }</pre>
-     */
-    public static Stream<String> splitToStream(CharSequence input) {
-        Spliterator<String> iter = new NewlineIterator(input);
-        return StreamSupport.stream(iter, false);
+    @Override
+    public void cancel() {
+        /**
+         * !!! To do !!! For now we are not supporting cancellation.
+         */
     }
 }
