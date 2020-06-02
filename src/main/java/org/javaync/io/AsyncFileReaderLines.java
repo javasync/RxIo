@@ -26,6 +26,7 @@
 package org.javaync.io;
 
 import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -33,6 +34,8 @@ import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidParameterException;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -41,18 +44,20 @@ import java.util.function.ObjIntConsumer;
  * strings corresponding to file lines.
  * These operations use an underlying AsynchronousFileChannel.
  */
-public class AsyncFileReaderLines {
+public class AsyncFileReaderLines implements Subscription {
     static final int BUFFER_SIZE= 4096*8;
     private static final int MAX_LINE_SIZE = 4096;
     private static final int LF = '\n';
     private static final int CR = '\r';
 
     private final Subscriber<? super String> sub;
-    private final ReaderSubscription sign;
+    private final ConcurrentLinkedDeque<String> lines = new ConcurrentLinkedDeque<>();
+    private final AtomicLong requests = new AtomicLong();
+    private volatile boolean finished = false;
+    private Throwable error = null;
 
-    AsyncFileReaderLines(Subscriber<? super String> sub, ReaderSubscription sign) {
+    AsyncFileReaderLines(Subscriber<? super String> sub) {
         this.sub = sub;
-        this.sign = sign;
     }
 
     /**
@@ -95,11 +100,11 @@ public class AsyncFileReaderLines {
             if (buffer[bufpos] == LF) {
                 if (linepos > 0 && auxline[linepos-1] == CR) linepos--;
                 bufpos++;
-                sub.onNext(produceLine(auxline, linepos));
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else if (linepos == MAX_LINE_SIZE -1) {
-                sub.onNext(produceLine(auxline, linepos));
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else auxline[linepos++] = buffer[bufpos++];
@@ -115,12 +120,13 @@ public class AsyncFileReaderLines {
             if (res <= 0) {
                 // needed for last line that doesn't end with LF
                 if (lastLinePos > 0) {
-                   sub.onNext(produceLine(auxline, lastLinePos));
+                   produceLine(auxline, lastLinePos);
                 }
-                closeAndNotifiesCompletion(asyncFile, sub);
+                closeAndNotifiesCompletion(asyncFile);
                 return;
             }
-            readLinesToSubscriber(asyncFile, next, 0, res, buffer, auxline, lastLinePos);
+            if(finished) sub.onComplete();
+            else readLinesToSubscriber(asyncFile, next, 0, res, buffer, auxline, lastLinePos);
         });
     }
 
@@ -159,19 +165,57 @@ public class AsyncFileReaderLines {
     }
 
 
-    static void closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, Subscriber<? super String> sub) {
+    void closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile) {
         try {
             asyncFile.close();
-            sub.onComplete(); // Successful terminal state.
+            if(lines.isEmpty()) sub.onComplete(); // Successful terminal state.
+            finished = true;
         } catch (IOException e) {
-            sub.onError(e); // Failed terminal state.
+            if(lines.isEmpty()) sub.onError(e); // Failed terminal state.
+            error = e;
         }
     }
     /**
      * @param auxline the transfer buffer.
      * @param linepos current position in producing line.
      */
-    private static String produceLine(byte[] auxline, int linepos) {
-        return new String(auxline, 0, linepos, StandardCharsets.UTF_8);
+    private void produceLine(byte[] auxline, int linepos) {
+        String line = new String(auxline, 0, linepos, StandardCharsets.UTF_8);
+        /**
+         * Always put the newly line on lines because a concurrent request
+         * may be asking for new lines and we should ensure the total order.
+         */
+        lines.offer(line);
+        emitLine();
+    }
+    private void emitLine() {
+        if(requests.get() > 0) {
+            String line = lines.poll();
+            /**
+             * We may have a concurrent emitLine() call resulting from the request().
+             */
+            if(line != null) {
+                sub.onNext(line);
+                requests.decrementAndGet();
+            }
+        }
+    }
+
+    @Override
+    public void request(long l) {
+        requests.addAndGet(l);
+        while(requests.get() > 0 && !lines.isEmpty()) {
+            emitLine();
+        }
+        /**
+         * First empty pending lines and then complete.
+         */
+        if(finished) { sub.onComplete(); return; }
+        if(error != null) { sub.onError(error); return; }
+    }
+
+    @Override
+    public void cancel() {
+        finished = true;
     }
 }

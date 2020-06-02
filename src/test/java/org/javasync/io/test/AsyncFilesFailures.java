@@ -117,6 +117,7 @@ public class AsyncFilesFailures {
                                 done[0] = true;
                             }
                         })
+                        .doOnSubscribe(sign -> sign.request(Integer.MAX_VALUE))
                         .doOnError(err -> {
                             assertTrue(err instanceof IOException);
                             promise.complete(null);
@@ -215,6 +216,7 @@ public class AsyncFilesFailures {
                 .lines(4, PATH)
                 .subscribe(Subscribers
                         .doOnNext((item) -> {})
+                        .doOnSubscribe(sign -> sign.request(Integer.MAX_VALUE))
                         .doOnError(err -> fail())
                         .doOnComplete(() ->
                             p.complete(null)

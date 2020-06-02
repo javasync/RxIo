@@ -28,6 +28,7 @@ package org.javasync.io.test;
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
 import org.junit.Test;
+import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
 
 import java.io.FileWriter;
@@ -40,7 +41,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -52,6 +55,7 @@ import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class AsyncFileReaderTest {
@@ -60,6 +64,7 @@ public class AsyncFileReaderTest {
     static final String OUTPUT = "output.txt";
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
     static final URL WIZARD = getSystemResource("The-Wizard-by-Rider-Haggard.txt");
+    static final URL SMALL = getSystemResource("Small.txt");
 
     @Test
     public void readLinesWith8BytesBufferToReactorFlux() throws IOException {
@@ -106,6 +111,7 @@ public class AsyncFileReaderTest {
                             String curr = iter.next();
                             assertEquals(curr, item);
                         })
+                        .doOnSubscribe(sign -> sign.request(Integer.MAX_VALUE))
                         .doOnError(err -> p.completeExceptionally(err))
                         .doOnComplete(() -> p.complete(null)));
             p.join();
@@ -186,7 +192,6 @@ public class AsyncFileReaderTest {
         /**
          * Act and Assert
          */
-        CompletableFuture<Void> started = new CompletableFuture<>();
         CompletableFuture<Void> completed = new CompletableFuture<>();
         AsyncFiles
                 .lines(PATH.toString())
@@ -196,12 +201,78 @@ public class AsyncFileReaderTest {
                             String curr = expected.next();
                             assertEquals(curr, item);
                         })
-                        .doOnSubscribe(sign -> started.complete(null))
+                        .doOnSubscribe(sign -> sign.request(Integer.MAX_VALUE))
                         .doOnError(err -> completed.completeExceptionally(err))
                         .doOnComplete(() -> completed.complete(null)));
             completed.join();
-            assertEquals(true, started.isDone());
             assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+    }
+
+    @Test
+    public void readLinesFromLargeFileAndCancelation() throws IOException, URISyntaxException {
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        CompletableFuture<Subscription> subscribed = new CompletableFuture<>();
+        int [] count = {0};
+        AsyncFiles
+                .lines(64, Paths.get(WIZARD.toURI()))
+                .subscribe(Subscribers
+                        .doOnNext(item -> {
+                            count[0]++;
+                            if(count[0] > 400)
+                                subscribed.join().cancel();
+                        })
+                        .doOnSubscribe(s -> {
+                            s.request(Integer.MAX_VALUE);
+                            subscribed.complete(s);
+                        })
+                        .doOnError(err -> completed.completeExceptionally(err))
+                        .doOnComplete(() -> completed.complete(null)));
+        completed.join();
+        assertEquals(401, count[0]);
+    }
+
+    @Test
+    public void readLinesFromLargeFileRequestRandomly() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        Path PATH = Paths.get(WIZARD.toURI());
+        Iterator<String> expected = Files
+            .lines(PATH, UTF_8)
+            .iterator();
+        /**
+         * Act and Assert
+         */
+        Random rand = new Random();
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        Subscription[] sign = { null };
+        AtomicInteger signals = new AtomicInteger();
+        AtomicInteger prevRequest = new AtomicInteger();
+        AsyncFiles
+                .lines(PATH.toString())
+                .subscribe(Subscribers
+                        .doOnNext(item -> {
+                            if(completed.isDone()) return;
+                            String curr = expected.next();
+                            assertEquals(curr, item);
+                            if(prevRequest.decrementAndGet() == 0) {
+                                int req = rand.nextInt(50) + 1;
+                                sign[0].request(req);
+                                prevRequest.addAndGet(req);
+                                signals.incrementAndGet();
+                            }
+                        })
+                        .doOnSubscribe(s -> {
+                            int req = rand.nextInt(50) + 1;
+                            s.request(req);
+                            prevRequest.addAndGet(req);
+                            sign[0] = s;
+                        })
+                        .doOnError(err -> completed.completeExceptionally(err))
+                        .doOnComplete(() -> completed.complete(null)));
+        completed.join();
+        assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+        assertTrue(signals.get() < 2000);
     }
 
     @Test

@@ -98,9 +98,9 @@ public class AsyncFiles {
         return sub -> {
             try {
                 AsynchronousFileChannel asyncFile = open(file, options);
-                ReaderSubscription sign = new ReaderSubscription();
-                sub.onSubscribe(sign);
-                new AsyncFileReaderLines(sub, sign).readLinesToSubscriber(asyncFile, bufferSize);
+                AsyncFileReaderLines reader = new AsyncFileReaderLines(sub);
+                reader.readLinesToSubscriber(asyncFile, bufferSize);
+                sub.onSubscribe(reader);
             } catch (IOException e) {
                 sub.onError(e);
             }
