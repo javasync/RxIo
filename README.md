@@ -31,7 +31,7 @@ simply add this dependency:
 <dependency> 
     <groupId>com.github.javasync</groupId>
     <artifactId>RxIo</artifactId>
-    <version>1.1.4</version>
+    <version>1.1.5</version>
 </dependency>
 ```
 
@@ -40,7 +40,7 @@ simply add this dependency:
 
 ```groovy
 dependencies {
-  implementation 'com.github.javasync:RxIo:1.1.4'
+  implementation 'com.github.javasync:RxIo:1.1.5'
 }
 ```
 
