@@ -26,19 +26,17 @@
 package org.javaync.io;
 
 import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidParameterException;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.ObjIntConsumer;
-
-import static java.util.concurrent.CompletableFuture.completedFuture;
 
 /**
  * Asynchronous non-blocking read operations with a reactive based API.
@@ -46,13 +44,20 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * strings corresponding to file lines.
  * These operations use an underlying AsynchronousFileChannel.
  */
-public class AsyncFileReader {
+public class AsyncFileReaderLines implements Subscription {
     static final int BUFFER_SIZE= 4096*8;
     private static final int MAX_LINE_SIZE = 4096;
     private static final int LF = '\n';
     private static final int CR = '\r';
 
-    private AsyncFileReader() {
+    private final Subscriber<? super String> sub;
+    private final ConcurrentLinkedDeque<String> lines = new ConcurrentLinkedDeque<>();
+    private final AtomicLong requests = new AtomicLong();
+    private volatile boolean finished = false;
+    private Throwable error = null;
+
+    AsyncFileReaderLines(Subscriber<? super String> sub) {
+        this.sub = sub;
     }
 
     /**
@@ -61,16 +66,12 @@ public class AsyncFileReader {
      * The resulting characters are parsed by line and passed to the {@code Subscriber sub}.
      * @param asyncFile the nio associated file channel.
      * @param bufferSize
-     * @param sub subscriber for resulting publisher.
-     * @param sign the subscription.
      */
-    static void readLinesToSubscriber(
+    void readLinesToSubscriber(
         AsynchronousFileChannel asyncFile,
-        int bufferSize,
-        Subscriber<? super String> sub,
-        ReaderSubscription sign)
+        int bufferSize)
     {
-        readLinesToSubscriber(asyncFile, 0, 0, 0, new byte[bufferSize], new byte[MAX_LINE_SIZE], 0, sub, sign);
+        readLinesToSubscriber(asyncFile, 0, 0, 0, new byte[bufferSize], new byte[MAX_LINE_SIZE], 0);
     }
 
     /**
@@ -85,29 +86,25 @@ public class AsyncFileReader {
      * @param buffer buffer for current producing line.
      * @param auxline the transfer buffer.
      * @param linepos current position in producing line.
-     * @param sub subscriber for resulting publisher.
-     * @param sign subscription.
      */
-    static void readLinesToSubscriber(
+    void readLinesToSubscriber(
             AsynchronousFileChannel asyncFile,
             long position,
             int bufpos,
             int bufsize,
             byte[] buffer,
             byte[] auxline,
-            int linepos,
-            Subscriber<? super String> sub,
-            ReaderSubscription sign)
+            int linepos)
     {
         while(bufpos < bufsize) {
             if (buffer[bufpos] == LF) {
                 if (linepos > 0 && auxline[linepos-1] == CR) linepos--;
                 bufpos++;
-                sub.onNext(produceLine(auxline, linepos));
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else if (linepos == MAX_LINE_SIZE -1) {
-                sub.onNext(produceLine(auxline, linepos));
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else auxline[linepos++] = buffer[bufpos++];
@@ -123,12 +120,13 @@ public class AsyncFileReader {
             if (res <= 0) {
                 // needed for last line that doesn't end with LF
                 if (lastLinePos > 0) {
-                   sub.onNext(produceLine(auxline, lastLinePos));
+                   produceLine(auxline, lastLinePos);
                 }
-                closeAndNotifiesCompletion(asyncFile, sub);
+                closeAndNotifiesCompletion(asyncFile);
                 return;
             }
-            readLinesToSubscriber(asyncFile, next, 0, res, buffer, auxline, lastLinePos, sub, sign);
+            if(finished) sub.onComplete();
+            else readLinesToSubscriber(asyncFile, next, 0, res, buffer, auxline, lastLinePos);
         });
     }
 
@@ -166,69 +164,58 @@ public class AsyncFileReader {
         asyncFile.read(buf, position, null, readCompleted);
     }
 
-    static CompletableFuture<Integer> readAllBytes(
-            AsynchronousFileChannel asyncFile,
-            ByteBuffer buffer,
-            int position,
-            ByteArrayOutputStream out)
-    {
-        return  readToByteArrayStream(asyncFile, buffer, position, out)
-                        .thenCompose(index ->
-                                index < 0
-                                ? completedFuture(position)
-                                : readAllBytes(asyncFile, buffer.clear(), position + index, out));
 
-    }
-
-    static CompletableFuture<Integer> readToByteArrayStream(
-            AsynchronousFileChannel asyncFile,
-            ByteBuffer buffer,
-            int position,
-            ByteArrayOutputStream out)
-    {
-        CompletableFuture<Integer> promise = new CompletableFuture<>();
-        asyncFile.read(buffer, position, buffer, new CompletionHandler<Integer, ByteBuffer>() {
-            @Override
-            public void completed(Integer result, ByteBuffer attachment) {
-                if(result > 0) {
-                    attachment.flip();
-                    byte[] data = new byte[attachment.limit()]; // limit = result
-                    attachment.get(data);
-                    write(out, data);
-                }
-                promise.complete(result);
-            }
-
-            @Override
-            public void failed(Throwable exc, ByteBuffer attachment) {
-                promise.completeExceptionally(exc);
-            }
-        });
-        return promise;
-    }
-
-    static void closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile, Subscriber<? super String> sub) {
+    void closeAndNotifiesCompletion(AsynchronousFileChannel asyncFile) {
         try {
             asyncFile.close();
-            sub.onComplete(); // Successful terminal state.
+            if(lines.isEmpty()) sub.onComplete(); // Successful terminal state.
+            finished = true;
         } catch (IOException e) {
-            sub.onError(e); // Failed terminal state.
+            if(lines.isEmpty()) sub.onError(e); // Failed terminal state.
+            error = e;
         }
     }
-
-    static void write(ByteArrayOutputStream out, byte[] data) {
-        try {
-            out.write(data);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
     /**
      * @param auxline the transfer buffer.
      * @param linepos current position in producing line.
      */
-    private static String produceLine(byte[] auxline, int linepos) {
-        return new String(auxline, 0, linepos, StandardCharsets.UTF_8);
+    private void produceLine(byte[] auxline, int linepos) {
+        String line = new String(auxline, 0, linepos, StandardCharsets.UTF_8);
+        /**
+         * Always put the newly line on lines because a concurrent request
+         * may be asking for new lines and we should ensure the total order.
+         */
+        lines.offer(line);
+        emitLine();
+    }
+    private void emitLine() {
+        if(requests.get() > 0) {
+            String line = lines.poll();
+            /**
+             * We may have a concurrent emitLine() call resulting from the request().
+             */
+            if(line != null) {
+                sub.onNext(line);
+                requests.decrementAndGet();
+            }
+        }
+    }
+
+    @Override
+    public void request(long l) {
+        requests.addAndGet(l);
+        while(requests.get() > 0 && !lines.isEmpty()) {
+            emitLine();
+        }
+        /**
+         * First empty pending lines and then complete.
+         */
+        if(finished) { sub.onComplete(); return; }
+        if(error != null) { sub.onError(error); return; }
+    }
+
+    @Override
+    public void cancel() {
+        finished = true;
     }
 }
