@@ -26,7 +26,7 @@
 package org.javasync.io.test;
 
 import org.javaync.io.AsyncFiles;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -41,15 +41,16 @@ import java.util.List;
 import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.file.Files.delete;
 import static java.nio.file.Files.lines;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.fail;
 
+
+@Test(singleThreaded=true)
 public class AsyncFileWriterTest {
 
     @Test
     public void writeLinesTest() throws IOException {
-        final String PATH = "output.txt";
+        final String PATH = "output1.txt";
         final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massive");
         try {
             AsyncFiles
@@ -72,7 +73,7 @@ public class AsyncFileWriterTest {
 
     @Test
     public void writeBytesTest() throws IOException, URISyntaxException {
-        final String OUTPUT = "output.txt";
+        final String OUTPUT = "output2.txt";
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path PATH = Paths.get(FILE.toURI());
         byte[] expected = Files.readAllBytes(PATH);
@@ -84,7 +85,7 @@ public class AsyncFileWriterTest {
                     .readAllBytes(Paths.get(OUTPUT))
                     .whenComplete((actual, ex) -> {
                         if (ex != null) fail(ex.getMessage());
-                        assertArrayEquals(expected, actual);
+                        assertEquals(expected, actual);
                     })
                     .join();
         }finally {
@@ -96,7 +97,7 @@ public class AsyncFileWriterTest {
     public void readWriteTestAsyncForReadme() throws IOException, URISyntaxException {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path in = Paths.get(FILE.toURI());
-        Path out = Paths.get("output.txt");
+        Path out = Paths.get("output3.txt");
         try {
             AsyncFiles
                     .readAllBytes(in)
@@ -104,7 +105,7 @@ public class AsyncFileWriterTest {
                     .join();
             byte[] expected = Files.readAllBytes(in);
             byte[] actual = Files.readAllBytes(out);
-            assertArrayEquals(expected, actual);
+            assertEquals(expected, actual);
         } finally {
             delete(out);
         }
@@ -114,13 +115,13 @@ public class AsyncFileWriterTest {
     public void readWriteTestSyncForReadme() throws IOException, URISyntaxException {
         URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
         Path in = Paths.get(FILE.toURI());
-        Path out = Paths.get("output.txt");
+        Path out = Paths.get("output4.txt");
         try {
             byte[] data = Files.readAllBytes(in);
             Files.write(out, data);
             byte[] expected = Files.readAllBytes(in);
             byte[] actual = Files.readAllBytes(out);
-            assertArrayEquals(expected, actual);
+            assertEquals(expected, actual);
         } finally {
             delete(out);
         }

@@ -27,8 +27,9 @@ package org.javasync.io.test;
 
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
-import org.junit.Test;
 import org.reactivestreams.Subscription;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 import reactor.core.publisher.Flux;
 
 import java.io.FileWriter;
@@ -42,6 +43,7 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -53,11 +55,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
+@Test(singleThreaded=true)
 public class AsyncFileReaderTest {
 
     static final Pattern NEWLINE = Pattern.compile("(\r\n|\n|\r)");
@@ -80,9 +83,9 @@ public class AsyncFileReaderTest {
             Iterator<String> iter = expected.iterator();
             Flux
                     .from(AsyncFiles.lines(8, OUTPUT)) // Act
-                    .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
+                    .doOnNext(line -> Assert.assertEquals(line, iter.next())) // Assert
                     .blockLast();
-            assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
+            assertFalse(iter.hasNext(), "Missing items retrieved by lines subscriber!!");
         } finally {
             delete(Paths.get(OUTPUT));
         }
@@ -115,7 +118,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> p.completeExceptionally(err))
                         .doOnComplete(() -> p.complete(null)));
             p.join();
-            assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
+            assertFalse(iter.hasNext(), "Missing items not retrieved by lines subscriber!!");
         } finally {
             delete(Paths.get(OUTPUT));
         }
@@ -205,11 +208,45 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> completed.completeExceptionally(err))
                         .doOnComplete(() -> completed.complete(null)));
             completed.join();
-            assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+            assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
     }
 
     @Test
-    public void readLinesFromLargeFileAndCancelation() throws IOException, URISyntaxException {
+    public void readLinesFromLargeFileAndSleep() throws IOException, URISyntaxException, InterruptedException {
+        /**
+         * Arrange
+         */
+        Path PATH = Paths.get(WIZARD.toURI());
+        Iterator<String> expected = Files
+            .lines(PATH, UTF_8)
+            .iterator();
+        /**
+         * Act and Assert
+         */
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        CompletableFuture<Subscription> sign = new CompletableFuture<>();
+        AsyncFiles
+                .lines(PATH.toString())
+                .subscribe(Subscribers
+                        .doOnNext(item -> {
+                            if(completed.isDone()) return;
+                            String curr = expected.next();
+                            assertEquals(curr, item);
+                        })
+                        .doOnSubscribe(s -> {
+                            s.request(400);
+                            sign.complete(s);
+                        })
+                        .doOnError(err -> completed.completeExceptionally(err))
+                        .doOnComplete(() -> completed.complete(null)));
+        Thread.sleep(1000);
+        sign.join().request(Long.MAX_VALUE);
+        completed.join();
+        assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
+    }
+
+    @Test
+    public void readLinesFromLargeFileAndCancelation() throws URISyntaxException, InterruptedException {
         CompletableFuture<Void> completed = new CompletableFuture<>();
         CompletableFuture<Subscription> subscribed = new CompletableFuture<>();
         int [] count = {0};
@@ -218,16 +255,18 @@ public class AsyncFileReaderTest {
                 .subscribe(Subscribers
                         .doOnNext(item -> {
                             count[0]++;
-                            if(count[0] > 400)
+                            if(count[0] > 400){
                                 subscribed.join().cancel();
+                                completed.complete(null);
+                            }
                         })
                         .doOnSubscribe(s -> {
                             s.request(Integer.MAX_VALUE);
                             subscribed.complete(s);
                         })
-                        .doOnError(err -> completed.completeExceptionally(err))
-                        .doOnComplete(() -> completed.complete(null)));
+                        .doOnError(err -> completed.completeExceptionally(err)));
         completed.join();
+        Thread.sleep(500); // Wait a little to check that no further signals were emitted in the meanwhile.
         assertEquals(401, count[0]);
     }
 
@@ -271,7 +310,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> completed.completeExceptionally(err))
                         .doOnComplete(() -> completed.complete(null)));
         completed.join();
-        assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+        assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
         assertTrue(signals.get() < 2000);
     }
 

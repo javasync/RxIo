@@ -36,6 +36,9 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 
 public class AsyncFileReaderBytes {
 
+    private AsyncFileReaderBytes() {
+    }
+
     static CompletableFuture<Integer> readAllBytes(
             AsynchronousFileChannel asyncFile,
             ByteBuffer buffer,

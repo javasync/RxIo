@@ -1,0 +1,11 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="SuiteAsyncFiles" verbose="1"  parallel="tests" thread-count="1">
+  <test name="UnitTests">
+    <classes>
+        <class name="org.javasync.io.test.AsyncFileWriterTest"></class>
+        <class name="org.javasync.io.test.AsyncFileReaderTest"></class>
+        <class name="org.javasync.io.test.AsyncFilesFailures"></class>
+        <class name="org.javasync.io.test.LinesPublisherTest"></class>
+    </classes>
+ </test>
+</suite>
