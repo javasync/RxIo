@@ -96,14 +96,17 @@ public class AsyncFiles {
      */
     public static Publisher<String> lines(int bufferSize, Path file, StandardOpenOption...options) {
         return sub -> {
+            AsyncFileReaderLines reader = null;
             try {
                 AsynchronousFileChannel asyncFile = open(file, options);
-                AsyncFileReaderLines reader = new AsyncFileReaderLines(sub);
-                reader.readLinesToSubscriber(asyncFile, bufferSize);
-                sub.onSubscribe(reader);
+                reader = new AsyncFileReaderLines(sub);
+                reader.readLines(asyncFile, bufferSize);
             } catch (IOException e) {
+                sub.onSubscribe(reader);
                 sub.onError(e);
+                return;
             }
+            sub.onSubscribe(reader);
         };
     }
 

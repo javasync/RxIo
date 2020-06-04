@@ -212,7 +212,41 @@ public class AsyncFileReaderTest {
     }
 
     @Test
-    public void readLinesFromLargeFileAndCancelation() throws IOException, URISyntaxException {
+    public void readLinesFromLargeFileAndSleep() throws IOException, URISyntaxException, InterruptedException {
+        /**
+         * Arrange
+         */
+        Path PATH = Paths.get(WIZARD.toURI());
+        Iterator<String> expected = Files
+            .lines(PATH, UTF_8)
+            .iterator();
+        /**
+         * Act and Assert
+         */
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        CompletableFuture<Subscription> sign = new CompletableFuture<>();
+        AsyncFiles
+                .lines(PATH.toString())
+                .subscribe(Subscribers
+                        .doOnNext(item -> {
+                            if(completed.isDone()) return;
+                            String curr = expected.next();
+                            assertEquals(curr, item);
+                        })
+                        .doOnSubscribe(s -> {
+                            s.request(400);
+                            sign.complete(s);
+                        })
+                        .doOnError(err -> completed.completeExceptionally(err))
+                        .doOnComplete(() -> completed.complete(null)));
+        Thread.sleep(1000);
+        sign.join().request(Long.MAX_VALUE);
+        completed.join();
+        assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
+    }
+
+    @Test
+    public void readLinesFromLargeFileAndCancelation() throws URISyntaxException, InterruptedException {
         CompletableFuture<Void> completed = new CompletableFuture<>();
         CompletableFuture<Subscription> subscribed = new CompletableFuture<>();
         int [] count = {0};
@@ -221,16 +255,18 @@ public class AsyncFileReaderTest {
                 .subscribe(Subscribers
                         .doOnNext(item -> {
                             count[0]++;
-                            if(count[0] > 400)
+                            if(count[0] > 400){
                                 subscribed.join().cancel();
+                                completed.complete(null);
+                            }
                         })
                         .doOnSubscribe(s -> {
                             s.request(Integer.MAX_VALUE);
                             subscribed.complete(s);
                         })
-                        .doOnError(err -> completed.completeExceptionally(err))
-                        .doOnComplete(() -> completed.complete(null)));
+                        .doOnError(err -> completed.completeExceptionally(err)));
         completed.join();
+        Thread.sleep(500); // Wait a little to check that no further signals were emitted in the meanwhile.
         assertEquals(401, count[0]);
     }
 
