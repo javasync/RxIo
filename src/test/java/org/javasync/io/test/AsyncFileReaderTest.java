@@ -27,8 +27,9 @@ package org.javasync.io.test;
 
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
-import org.junit.Test;
 import org.reactivestreams.Subscription;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 import reactor.core.publisher.Flux;
 
 import java.io.FileWriter;
@@ -42,6 +43,7 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -53,11 +55,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
+@Test(singleThreaded=true)
 public class AsyncFileReaderTest {
 
     static final Pattern NEWLINE = Pattern.compile("(\r\n|\n|\r)");
@@ -80,9 +83,9 @@ public class AsyncFileReaderTest {
             Iterator<String> iter = expected.iterator();
             Flux
                     .from(AsyncFiles.lines(8, OUTPUT)) // Act
-                    .doOnNext(line -> assertEquals(iter.next(), line)) // Assert
+                    .doOnNext(line -> Assert.assertEquals(line, iter.next())) // Assert
                     .blockLast();
-            assertFalse("Missing items retrieved by lines subscriber!!", iter.hasNext());
+            assertFalse(iter.hasNext(), "Missing items retrieved by lines subscriber!!");
         } finally {
             delete(Paths.get(OUTPUT));
         }
@@ -115,7 +118,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> p.completeExceptionally(err))
                         .doOnComplete(() -> p.complete(null)));
             p.join();
-            assertFalse("Missing items not retrieved by lines subscriber!!", iter.hasNext());
+            assertFalse(iter.hasNext(), "Missing items not retrieved by lines subscriber!!");
         } finally {
             delete(Paths.get(OUTPUT));
         }
@@ -205,7 +208,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> completed.completeExceptionally(err))
                         .doOnComplete(() -> completed.complete(null)));
             completed.join();
-            assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+            assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
     }
 
     @Test
@@ -271,7 +274,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> completed.completeExceptionally(err))
                         .doOnComplete(() -> completed.complete(null)));
         completed.join();
-        assertFalse("Missing items not retrieved by lines subscriber!!", expected.hasNext());
+        assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!");
         assertTrue(signals.get() < 2000);
     }
 

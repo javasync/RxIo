@@ -277,7 +277,7 @@ public class AsyncFiles {
             // The call to writer.close() is asynchronous and will chain
             // a continuation to close the AsyncFileChannel only after completion.
             return writer.getPosition();
-        } catch (IOException e) {
+        } catch (Exception e) {
             return CompletableFuture.failedFuture(e);
         }
     }

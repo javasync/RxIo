@@ -26,8 +26,7 @@ package org.javasync.io.test;
 
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
-import org.junit.Assert;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -47,12 +46,12 @@ import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
-
+@Test(singleThreaded=true)
 public class AsyncFilesFailures {
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
     static final URL UTF_8_INVALID = getSystemResource("UTF-8-test.txt");
@@ -65,7 +64,7 @@ public class AsyncFilesFailures {
                     if(err == null)
                         fail("It should fail reading an nonexistent!");
                     else
-                        Assert.assertThat(err, instanceOf(NoSuchFileException.class));
+                        assertEquals(err.getClass(), NoSuchFileException.class);
                 });
     }
 
@@ -78,7 +77,7 @@ public class AsyncFilesFailures {
                             fail("It should fail reading an nonexistent!")
                         )
                         .doOnError(err ->
-                            Assert.assertThat(err, instanceOf(NoSuchFileException.class))
+                            assertEquals(err.getClass(), NoSuchFileException.class)
                         ));
     }
 
@@ -89,7 +88,7 @@ public class AsyncFilesFailures {
                     if(err == null || data != null)
                         fail("It should fail reading an nonexistent!");
                     else
-                        Assert.assertThat(err, instanceOf(NoSuchFileException.class));
+                        assertEquals(err.getClass(), NoSuchFileException.class);
             });
     }
 
@@ -129,7 +128,6 @@ public class AsyncFilesFailures {
         }
     }
 
-
     @Test
     public void concurrentReadBytes() throws IOException, ExecutionException, InterruptedException, URISyntaxException {
         Path path = Paths.get(METAMORPHOSIS.toURI());
@@ -147,7 +145,6 @@ public class AsyncFilesFailures {
         }
     }
 
-    @Test
     public void concurrentWriteLines() throws IOException, URISyntaxException {
         final Path OUTPUT = Paths.get("dummy2.txt");
         Stream<String> lines = Files.lines(Paths.get(METAMORPHOSIS.toURI()));
@@ -176,7 +173,7 @@ public class AsyncFilesFailures {
                     if(err == null)
                         fail("It should fail creating a file that already exists");
                     else
-                        Assert.assertThat(err, instanceOf(IOException.class));
+                        assertEquals(err.getClass(), IOException.class);
                 });
         }
         finally {
@@ -195,7 +192,7 @@ public class AsyncFilesFailures {
                     if(err == null)
                         fail("It should fail creating a file that already exists");
                     else
-                        Assert.assertThat(err, instanceOf(IOException.class));
+                        assertEquals(err.getClass(), IOException.class);
                 });
         }
         finally {
