@@ -25,6 +25,7 @@
 
 package org.javasync.io.test;
 
+import io.reactivex.rxjava3.core.Observable;
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
 import org.reactivestreams.Subscription;
@@ -43,7 +44,6 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
-import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -365,6 +365,31 @@ public class AsyncFileReaderTest {
                     assertEquals(next, line);
                 })
                 .blockLast();
+        if(expected.hasNext())
+            fail("There are missing lines to read: " + expected.next());
+    }
+        @Test
+    public void readLinesFromLargeFileRxJavaObservable() throws IOException, URISyntaxException {
+        /**
+         * Arrange
+         */
+        Path PATH = Paths.get(METAMORPHOSIS.toURI());
+        Iterator<String> expected = Files
+                .lines(PATH, UTF_8)
+                .iterator();
+        /**
+         * Act and Assert
+         */
+        Observable
+                .fromPublisher(AsyncFiles.lines(PATH)) // Act
+                .doOnError(ex -> fail(ex.getMessage()))
+                .doOnNext(line -> {
+                    if(!expected.hasNext())
+                        fail("More items read than expected!");
+                    String next = expected.next();
+                    assertEquals(next, line);
+                })
+                .blockingSubscribe();
         if(expected.hasNext())
             fail("There are missing lines to read: " + expected.next());
     }
