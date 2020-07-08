@@ -28,6 +28,8 @@ package org.javaync.io;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 
+import java.nio.channels.AsynchronousFileChannel;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,7 +37,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Asynchronous non-blocking read operations with a reactive based API.
+ * Asynchronous non-blocking read operations with a reactive based API
+ * implementing the Subscription proposal from reactivestreams.
  */
 public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implements Subscription {
     //
@@ -49,20 +52,22 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
     // It never changes from 1 to 0 directly. It must pass before by the state 3.
     private final AtomicInteger onEmit = new AtomicInteger(0);
     //
-    // This `ConcurrentLinkedQueue` will track the `onNext` signals that will be sent to the  `Subscriber`.
+    // This `ConcurrentLinkedQueue` will track the `onNext` signals that will be sent to the `Subscriber`.
     private final ConcurrentLinkedDeque<String> lines = new ConcurrentLinkedDeque<>();
     //
     // Here we track the current demand, i.e. what has been requested but not yet delivered.
     private final AtomicLong requests = new AtomicLong();
     //
-    // This flag will track whether this `Subscription` is to be considered cancelled or not.
-    private boolean cancelled = false;
+    // The flag finish.isCancelled will track whether this `Subscription` is to be considered cancelled or not.
+    // !!! not sure about using cancel() or complete() instead !!!!
+    private final CompletableFuture<Void> finish;
     //
     // Need to keep track of End-of-Stream
     private boolean hasNext = true;
 
-    AsyncFileReaderLines(Subscriber<? super String> sub) {
+    AsyncFileReaderLines(Subscriber<? super String> sub, AsynchronousFileChannel asyncFile, int bufferSize) {
         this.sub = sub;
+        finish = this.readLines(asyncFile, bufferSize);
     }
 
     @Override
@@ -90,9 +95,10 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
         /**
          * It only emits lines if subscription is not cancelled yet and there are still
          * pending requests.
+         * Rule 1.8 is upheld, i.e. we need to stop signalling "eventually".
+         * This is ensured by the base class.
          */
-        while(!cancelled               // This makes sure that rule 1.8 is upheld, i.e. we need to stop signalling "eventually"
-              && requests.get() > 0    // This makes sure that rule 1.1 is upheld (sending more than was demanded)
+        while( requests.get() > 0    // This makes sure that rule 1.1 is upheld (sending more than was demanded)
               && !lines.isEmpty()) {
             emitLine();
         }
@@ -117,7 +123,6 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
      */
     @Override
     public void request(long l) {
-        if(cancelled) return;
         doRequest(l);
         if(!hasNext) {
             tryFlushPendingLines();
@@ -125,7 +130,7 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
     }
     /**
      * This method may be invoked by request() in case of End-of-Stream or by close().
-     * Here the `onEmit` controls mutual exclusion to the emitLines() call.
+     * Here the `onEmit` controls mutual exclusion to the emitLine() call.
      */
     private void tryFlushPendingLines() {
         int state;
@@ -147,7 +152,7 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
         // it will change onEmit to 1 and proceed emitting pending lines.
         onEmit.set(0); // release onEmit
         if(lines.isEmpty()) {
-            cancelled = true; // We need to consider this `Subscription` as cancelled as per rule 1.6
+            finish.cancel(true); // We need to consider this `Subscription` as cancelled as per rule 1.6
             sub.onComplete(); // Then we signal `onComplete` as per rule 1.2 and 1.5
         }
     }
@@ -159,7 +164,7 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
     private boolean toContinue() {
         // First, change to state 3 corresponding to evaluation of requests and lines.
         onEmit.set(3);
-        boolean cont = !cancelled    // This makes sure that rule 1.8 is upheld, i.e. we need to stop signalling "eventually"
+        boolean cont = !finish.isCancelled() // This makes sure that rule 1.8 is upheld, i.e. we need to stop signalling "eventually"
               && requests.get() > 0  // This makes sure that rule 1.1 is upheld (sending more than was demanded)
               && !lines.isEmpty();
         // If there are pending requests and lines to be emitted, then change to
@@ -170,7 +175,7 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
 
     @Override
     public void cancel() {
-        cancelled = true;
+        finish.cancel(true);
     }
 
     /**
@@ -191,7 +196,7 @@ public class AsyncFileReaderLines extends AbstractAsyncFileReaderLines implement
      * This is a helper method to ensure that we always `cancel` when we signal `onError` as per rule 1.6
      */
     private void terminateDueTo(final Throwable t) {
-        cancelled = true; // When we signal onError, the subscription must be considered as cancelled, as per rule 1.6
+        finish.cancel(true); // When we signal onError, the subscription must be considered as cancelled, as per rule 1.6
         try {
             sub.onError(t); // Then we signal the error downstream, to the `Subscriber`
         } catch (final Exception t2) { // If `onError` throws an exception, this is a spec violation according to rule 1.9, and all we can do is to log it.

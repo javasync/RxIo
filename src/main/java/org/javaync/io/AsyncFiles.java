@@ -25,6 +25,8 @@
 
 package org.javaync.io;
 
+import kotlinx.coroutines.flow.Flow;
+import org.jayield.AsyncQuery;
 import org.reactivestreams.Publisher;
 
 import java.io.ByteArrayOutputStream;
@@ -53,6 +55,18 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public class AsyncFiles {
 
     private AsyncFiles() {
+    }
+
+    public static AsyncQuery<String> asyncQuery(Path file) {
+        return new AsyncFileQuery(file);
+    }
+    /**
+     * Reads the given file from the beginning using an AsyncFileChannel into
+     * kotlin asynchronous Flow.
+     * It uses a ByteBuffer of {@link AbstractAsyncFileReaderLines#BUFFER_SIZE BUFFER_SIZE} capacity
+     */
+    public static Flow<String> flow(Path file) {
+        return AsyncFileReaderFlow.lines(file);
     }
 
     /**
@@ -99,8 +113,7 @@ public class AsyncFiles {
             AsyncFileReaderLines reader = null;
             try {
                 AsynchronousFileChannel asyncFile = open(file, options);
-                reader = new AsyncFileReaderLines(sub);
-                reader.readLines(asyncFile, bufferSize);
+                reader = new AsyncFileReaderLines(sub, asyncFile, bufferSize);
             } catch (IOException e) {
                 sub.onSubscribe(reader);
                 sub.onError(e);

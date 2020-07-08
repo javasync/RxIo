@@ -28,6 +28,8 @@ package org.javasync.io.test;
 import io.reactivex.rxjava3.core.Observable;
 import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
+import org.jayield.AsyncQuery;
+import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -43,17 +45,22 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static io.reactivex.rxjava3.core.Observable.fromArray;
 import static java.lang.ClassLoader.getSystemResource;
 import static java.lang.System.lineSeparator;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
+import static java.util.Collections.max;
+import static java.util.Comparator.comparingInt;
 import static java.util.stream.Collectors.joining;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -67,7 +74,6 @@ public class AsyncFileReaderTest {
     static final String OUTPUT = "output.txt";
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
     static final URL WIZARD = getSystemResource("The-Wizard-by-Rider-Haggard.txt");
-    static final URL SMALL = getSystemResource("Small.txt");
 
     @Test
     public void readLinesWith8BytesBufferToReactorFlux() throws IOException {
@@ -368,7 +374,7 @@ public class AsyncFileReaderTest {
         if(expected.hasNext())
             fail("There are missing lines to read: " + expected.next());
     }
-        @Test
+    @Test
     public void readLinesFromLargeFileRxJavaObservable() throws IOException, URISyntaxException {
         /**
          * Arrange
@@ -392,5 +398,44 @@ public class AsyncFileReaderTest {
                 .blockingSubscribe();
         if(expected.hasNext())
             fail("There are missing lines to read: " + expected.next());
+    }
+    @Test
+    public void readLinesFromLargeFileRxJavaObservableAndCountWords() throws URISyntaxException {
+        final int  MIN = 5;
+        final int  MAX = 10;
+        Path file = Paths.get(WIZARD.toURI());
+        ConcurrentHashMap<String, Integer> words = new ConcurrentHashMap<>();
+        Publisher<String> lines = AsyncFiles.lines(file);
+        Observable
+            .fromPublisher(lines)
+            .filter(line -> !line.isEmpty())                   // Skip empty lines
+            .skip(14)                                          // Skip gutenberg header
+            .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+            .flatMap(line -> fromArray(line.split(" ")))
+            .filter(word -> word.length() > MIN && word.length() < MAX)
+            .doOnNext(w -> words.merge(w, 1, Integer::sum))
+            .blockingSubscribe();
+        Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
+        assertEquals("Hokosa", common.getKey());
+        assertEquals(183, common.getValue().intValue());
+    }
+    @Test
+    public void readLinesFromLargeFileAsyncQueryAndCountWords() throws URISyntaxException {
+        final int  MIN = 5;
+        final int  MAX = 10;
+        Path file = Paths.get(WIZARD.toURI());
+        ConcurrentHashMap<String, Integer> words = new ConcurrentHashMap<>();
+        AsyncFiles
+            .asyncQuery(file)
+            .filter(line -> !line.isEmpty())                   // Skip empty lines
+            .skip(14)                                          // Skip gutenberg header
+            .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+            .flatMapMerge(line -> AsyncQuery.of(line.split(" ")))
+            .filter(word -> word.length() > MIN && word.length() < MAX)
+            .onNext((w, err) -> words.merge(w, 1, Integer::sum))
+            .blockingSubscribe();
+        Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
+        assertEquals("Hokosa", common.getKey());
+        assertEquals(183, common.getValue().intValue());
     }
 }
