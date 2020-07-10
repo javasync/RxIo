@@ -438,4 +438,28 @@ public class AsyncFileReaderTest {
         assertEquals("Hokosa", common.getKey());
         assertEquals(183, common.getValue().intValue());
     }
+
+    /**
+     * Despite this test being very similar to the previous one it suppresses the takeWhile()
+     * operation from the pipeline.
+     * The takeWhile() was hiding a bug in asyncQuery() on completion of the CF.
+     */
+    @Test
+    public void readLinesFromLargeFileAsyncQueryWithoutTakeWhile() throws URISyntaxException {
+        final int  MIN = 5;
+        final int  MAX = 10;
+        Path file = Paths.get(WIZARD.toURI());
+        ConcurrentHashMap<String, Integer> words = new ConcurrentHashMap<>();
+        AsyncFiles
+            .asyncQuery(file)
+            .filter(line -> !line.isEmpty())                   // Skip empty lines
+            .skip(14)                                          // Skip gutenberg header
+            .flatMapMerge(line -> AsyncQuery.of(line.split(" ")))
+            .filter(word -> word.length() > MIN && word.length() < MAX)
+            .onNext((w, err) -> words.merge(w, 1, Integer::sum))
+            .blockingSubscribe();
+        Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
+        assertEquals("Hokosa", common.getKey());
+        assertEquals(183, common.getValue().intValue());
+    }
 }

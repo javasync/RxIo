@@ -27,7 +27,9 @@ class AsyncFileReaderFlowTest {
             runBlocking {
                 AsyncFiles
                         .flow(output)
-                        .collect { assertEquals(expected.next(), it) }
+                        .collect {
+                            assertEquals(expected.next(), it)
+                        }
             }
             assertFalse(expected.hasNext())
         } finally { Files.delete(output) }

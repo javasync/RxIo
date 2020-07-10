@@ -1,15 +1,12 @@
 package org.javaync.io;
 
 import org.jayield.AsyncQuery;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
-import java.io.IOException;
-import java.nio.channels.AsynchronousFileChannel;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
-
-import static java.nio.channels.AsynchronousFileChannel.open;
 
 public class AsyncFileQuery extends AsyncQuery<String> {
     private final Path file;
@@ -20,35 +17,46 @@ public class AsyncFileQuery extends AsyncQuery<String> {
 
     @Override
     public CompletableFuture<Void> subscribe(BiConsumer<? super String, ? super Throwable> cons) {
-        try {
-            AbstractAsyncFileReaderLines reader = new ReadToCallback(cons);
-            AsynchronousFileChannel asyncFile = open(file, StandardOpenOption.READ);
-            return reader.readLines(asyncFile, AbstractAsyncFileReaderLines.BUFFER_SIZE);
-        } catch (IOException e) {
-            return CompletableFuture.failedFuture(e);
-        }
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadToCallback reader = new ReadToCallback(cons, cf);
+        AsyncFiles.lines(file).subscribe(reader);
+        return cf;
     }
 
-    private static class ReadToCallback extends AbstractAsyncFileReaderLines {
+    private static class ReadToCallback implements Subscriber<String> {
         private final BiConsumer<? super String, ? super Throwable> cons;
+        private final CompletableFuture<Void> cf;
+        private Subscription sign;
 
-        public ReadToCallback(BiConsumer<? super String, ? super Throwable> cons) {
+        public ReadToCallback(BiConsumer<? super String, ? super Throwable> cons, CompletableFuture<Void> cf) {
             this.cons = cons;
+            // Whenever the client express intention of finishing emission
+            // either through complete() or cancel() then we propagate to
+            // subscription cancellation.
+            this.cf = cf; // Keep the reference to the same CF shared with the client
+            cf.whenComplete((nothing, err) -> sign.cancel());
         }
 
         @Override
-        protected void onError(Throwable error) {
-            cons.accept(null, error);
+        public void onSubscribe(Subscription subscription) {
+            this.sign = subscription;
+            sign.request(Long.MAX_VALUE);
         }
 
         @Override
-        protected void onComplete() {
-
-        }
-
-        @Override
-        protected void onProduceLine(String line) {
+        public void onNext(String line) {
             cons.accept(line, null);
+        }
+
+        @Override
+        public void onError(Throwable err) {
+            cons.accept(null, err);
+        }
+
+        @Override
+        public void onComplete() {
+            if(!cf.isDone())
+                cf.complete(null);
         }
     }
 }

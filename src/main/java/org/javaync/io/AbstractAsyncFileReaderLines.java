@@ -31,7 +31,6 @@ import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidParameterException;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -46,6 +45,16 @@ public abstract class AbstractAsyncFileReaderLines {
     protected abstract void onError(Throwable error);
     protected abstract void onComplete();
     protected abstract void onProduceLine(String line);
+    //
+    // This flag will track whether this `Subscription` is to be considered cancelled or not.
+    private boolean cancelled = false;
+
+    public final void cancel() {
+        cancelled = true;
+    }
+    public final boolean isCancelled() {
+        return cancelled;
+    }
 
     /**
      * Read bytes from an {@code AsynchronousFileChannel}, which are decoded into characters
@@ -53,15 +62,12 @@ public abstract class AbstractAsyncFileReaderLines {
      * The resulting characters are parsed by line and passed to the destination buffer.
      * @param asyncFile the nio associated file channel.
      * @param bufferSize
-     * @return
      */
-    final CompletableFuture<Void> readLines(
+    final void readLines(
         AsynchronousFileChannel asyncFile,
         int bufferSize)
     {
-        CompletableFuture<Void> finish = new CompletableFuture<>();
-        readLines(asyncFile, 0, 0, 0, new byte[bufferSize], new byte[MAX_LINE_SIZE], 0, finish);
-        return finish;
+        readLines(asyncFile, 0, 0, 0, new byte[bufferSize], new byte[MAX_LINE_SIZE], 0);
     }
     /**
      * There is a recursion on `readLines()`establishing a serial order among:
@@ -75,7 +81,6 @@ public abstract class AbstractAsyncFileReaderLines {
      * @param buffer buffer for current producing line.
      * @param auxline the transfer buffer.
      * @param linepos current position in producing line.
-     * @param finish Notifies completion and receives cancellation request.
      */
     private final void readLines(
             AsynchronousFileChannel asyncFile,
@@ -84,29 +89,30 @@ public abstract class AbstractAsyncFileReaderLines {
             int bufsize,
             byte[] buffer,
             byte[] auxline,
-            int linepos,
-            CompletableFuture<Void> finish)
+            int linepos)
     {
         while(bufpos < bufsize) {
             if (buffer[bufpos] == LF) {
                 if (linepos > 0 && auxline[linepos-1] == CR) linepos--;
                 bufpos++;
                 // If CF finish has been canceled then produceLine() returns false and we will end the loop.
-                if(!produceLine(auxline, linepos, asyncFile, finish)) return;
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else if (linepos == MAX_LINE_SIZE -1) {
                 // If CF finish has been canceled then produceLine() returns false and we will end the loop.
-                if(!produceLine(auxline, linepos, asyncFile, finish)) return;
+                produceLine(auxline, linepos);
                 linepos = 0;
             }
             else auxline[linepos++] = buffer[bufpos++];
         }
         int lastLinePos = linepos;
-        readBytes(asyncFile, position, buffer, 0, buffer.length, (err, res) -> {
+        if(!isCancelled()) readBytes(asyncFile, position, buffer, 0, buffer.length, (err, res) -> {
+            if(isCancelled())
+                return;
             if(err != null) {
                 onError(err);
-                close(asyncFile, finish);
+                close(asyncFile);
                 return;
             }
             long next = position;
@@ -114,13 +120,13 @@ public abstract class AbstractAsyncFileReaderLines {
             if (res <= 0) {
                 // needed for last line that doesn't end with LF
                 if (lastLinePos > 0) {
-                   produceLine(auxline, lastLinePos, asyncFile, finish); // Last line, thus no check needed!
+                   produceLine(auxline, lastLinePos);
                 }
                 // Following, it sets hasNext to false.
-                close(asyncFile, finish);
+                close(asyncFile);
                 return;
             }
-            else readLines(asyncFile, next, 0, res, buffer, auxline, lastLinePos, finish);
+            else readLines(asyncFile, next, 0, res, buffer, auxline, lastLinePos);
         });
     }
     /**
@@ -162,7 +168,7 @@ public abstract class AbstractAsyncFileReaderLines {
      *
      * @param asyncFile
      */
-    private final void close(AsynchronousFileChannel asyncFile, CompletableFuture<Void> finish) {
+    private final void close(AsynchronousFileChannel asyncFile) {
         try {
             asyncFile.close();
         } catch (IOException e) {
@@ -170,8 +176,6 @@ public abstract class AbstractAsyncFileReaderLines {
             // Emission has finished. Does not propagate error on CompletableFuture.
         } finally {
             onComplete();
-            if(!finish.isDone())
-                finish.complete(null);
         }
     }
     /**
@@ -179,23 +183,9 @@ public abstract class AbstractAsyncFileReaderLines {
      *
      * @param auxline the transfer buffer.
      * @param linepos current position in producing line.
-     * @param asyncFile the nio associated file channel.
-     * @param finish CompletableFuture signaling the end of emission or cancellation.
-     * @return true or false depending on whether the line is emitted or emission was canceled by the client.
      */
-    private final boolean produceLine(
-        byte[] auxline,
-        int linepos,
-        AsynchronousFileChannel asyncFile,
-        CompletableFuture<Void> finish)
-    {
-        if(finish.isCancelled()) {
-            close(asyncFile, finish);
-            return false;
-        } else {
-            String line = new String(auxline, 0, linepos, StandardCharsets.UTF_8);
-            onProduceLine(line);
-            return true;
-        }
+    private final void produceLine(byte[] auxline, int linepos) {
+        String line = new String(auxline, 0, linepos, StandardCharsets.UTF_8);
+        onProduceLine(line);
     }
 }

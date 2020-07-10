@@ -7,28 +7,30 @@ import kotlinx.coroutines.channels.sendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import org.reactivestreams.Subscriber
+import org.reactivestreams.Subscription
 import java.nio.channels.AsynchronousFileChannel
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 
-class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : AbstractAsyncFileReaderLines() {
+class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Subscriber<String> {
+
+    private lateinit var sign: Subscription
 
     companion object {
-        @JvmStatic fun lines(file: Path) : Flow<String> = lines(BUFFER_SIZE, file, StandardOpenOption.READ)
-
-        @JvmStatic fun lines(bufferSize: Int, file: Path, vararg options: StandardOpenOption) : Flow<String> =
+        @JvmStatic fun lines(file: Path) : Flow<String> =
             callbackFlow<String> {
-                val asyncFile = AsynchronousFileChannel.open(file, *options)
-                val cf = AsyncFileReaderFlow(this).readLines(asyncFile, bufferSize)
+                val sub = AsyncFileReaderFlow(this)
+                AsyncFiles.lines(file).subscribe(sub)
                 /**
                  * Next awaitClose() is equivalent to continuation.invokeOnCancellation ans it is mandatory.
                  * Should be used in the end of callbackFlow block.
                  */
                 awaitClose {
-                    cf.cancel(true)
+                    sub.sign.cancel()
                 }
             }
-            .buffer(bufferSize)
+            .buffer(AbstractAsyncFileReaderLines.BUFFER_SIZE)
     }
 
     override fun onError(error: Throwable?) {
@@ -39,10 +41,12 @@ class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Abstract
         channel.close()
     }
 
-    /**
-     * Invoke from an IO background thread.
-     */
-    override fun onProduceLine(line: String) {
+    override fun onSubscribe(subscription: Subscription) {
+        sign = subscription
+        sign.request(Long.MAX_VALUE);
+    }
+
+    override fun onNext(line: String) {
         /**
          * Replacing the following sendBlocking() with offer() (which is async)
          * will require the use of a chained buffer() in resulting Flow pipeline
