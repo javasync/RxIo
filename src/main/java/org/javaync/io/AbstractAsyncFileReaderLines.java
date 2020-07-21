@@ -30,8 +30,12 @@ import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.InvalidParameterException;
 import java.util.function.ObjIntConsumer;
+
+import static java.nio.channels.AsynchronousFileChannel.open;
 
 /**
  * Asynchronous non-blocking read operations that use an underlying AsynchronousFileChannel.
@@ -54,6 +58,10 @@ public abstract class AbstractAsyncFileReaderLines {
     }
     public final boolean isCancelled() {
         return cancelled;
+    }
+
+    final void readLines(Path file) throws IOException {
+        readLines(open(file, StandardOpenOption.READ), BUFFER_SIZE);
     }
 
     /**
@@ -122,7 +130,7 @@ public abstract class AbstractAsyncFileReaderLines {
                 if (lastLinePos > 0) {
                    produceLine(auxline, lastLinePos);
                 }
-                // Following, it sets hasNext to false.
+                // Following it will invoke onComplete()
                 close(asyncFile);
                 return;
             }
