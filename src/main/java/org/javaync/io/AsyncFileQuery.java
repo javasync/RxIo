@@ -1,12 +1,14 @@
 package org.javaync.io;
 
 import org.jayield.AsyncQuery;
-import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import static java.nio.channels.AsynchronousFileChannel.open;
 
 public class AsyncFileQuery extends AsyncQuery<String> {
     private final Path file;
@@ -17,34 +19,44 @@ public class AsyncFileQuery extends AsyncQuery<String> {
 
     @Override
     public CompletableFuture<Void> subscribe(BiConsumer<? super String, ? super Throwable> cons) {
+        /**
+         * The following CF is used bidirectionally from the Reader to the user and vice-versa.
+         * The Reader may notify the user about end completion and the user may tell the Reader
+         * to stop read and invoke the callback when the CF is cancelled or completed by the user.
+         */
         CompletableFuture<Void> cf = new CompletableFuture<>();
-        ReadToCallback reader = new ReadToCallback(cons, cf);
-        AsyncFiles.lines(file).subscribe(reader);
+        try {
+            ReaderToCallback
+                .of(cons, () -> { if(!cf.isDone()) cf.complete(null); })
+                .apply(reader -> cf.whenComplete((nothing, err) -> reader.cancel()))
+                .readLines(file);
+        } catch (IOException e) {
+            cf.completeExceptionally(e);
+        }
         return cf;
     }
 
-    private static class ReadToCallback implements Subscriber<String> {
+
+    private static class ReaderToCallback extends AbstractAsyncFileReaderLines {
         private final BiConsumer<? super String, ? super Throwable> cons;
-        private final CompletableFuture<Void> cf;
-        private Subscription sign;
+        private final Runnable doOnComplete;
 
-        public ReadToCallback(BiConsumer<? super String, ? super Throwable> cons, CompletableFuture<Void> cf) {
+        public ReaderToCallback(BiConsumer<? super String, ? super Throwable> cons, Runnable doOnComplete) {
             this.cons = cons;
-            // Whenever the client express intention of finishing emission
-            // either through complete() or cancel() then we propagate to
-            // subscription cancellation.
-            this.cf = cf; // Keep the reference to the same CF shared with the client
-            cf.whenComplete((nothing, err) -> sign.cancel());
+            this.doOnComplete = doOnComplete;
+        }
+
+        public static ReaderToCallback of(BiConsumer<? super String, ? super Throwable> cons, Runnable doOnComplete) {
+            return new ReaderToCallback(cons, doOnComplete);
+        }
+
+        public final AbstractAsyncFileReaderLines apply(Consumer<AbstractAsyncFileReaderLines> cons) {
+            cons.accept(this);
+            return this;
         }
 
         @Override
-        public void onSubscribe(Subscription subscription) {
-            this.sign = subscription;
-            sign.request(Long.MAX_VALUE);
-        }
-
-        @Override
-        public void onNext(String line) {
+        public void onProduceLine(String line) {
             cons.accept(line, null);
         }
 
@@ -55,8 +67,7 @@ public class AsyncFileQuery extends AsyncQuery<String> {
 
         @Override
         public void onComplete() {
-            if(!cf.isDone())
-                cf.complete(null);
+            doOnComplete.run();
         }
     }
 }
