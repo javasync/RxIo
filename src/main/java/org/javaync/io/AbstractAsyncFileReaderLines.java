@@ -39,9 +39,11 @@ import static java.nio.channels.AsynchronousFileChannel.open;
 
 /**
  * Asynchronous non-blocking read operations that use an underlying AsynchronousFileChannel.
+ *
+ * @author Jorge Martins
  */
 public abstract class AbstractAsyncFileReaderLines {
-    static final int BUFFER_SIZE= 4096*8;
+    static final int BUFFER_SIZE= 4096*8; // the transfer buffer size
     private static final int MAX_LINE_SIZE = 4096;
     private static final int LF = '\n';
     private static final int CR = '\r';
@@ -92,30 +94,28 @@ public abstract class AbstractAsyncFileReaderLines {
      */
     private final void readLines(
             AsynchronousFileChannel asyncFile,
-            long position,
-            int bufpos,
-            int bufsize,
-            byte[] buffer,
-            byte[] auxline,
-            int linepos)
+            long position,  // current read or write position in file
+            int bufpos,     // read position in buffer
+            int bufsize,    // total bytes in buffer
+            byte[] buffer,  // buffer for current producing line
+            byte[] auxline, // the transfer buffer
+            int linepos)    // current position in producing line
     {
         while(bufpos < bufsize) {
             if (buffer[bufpos] == LF) {
                 if (linepos > 0 && auxline[linepos-1] == CR) linepos--;
                 bufpos++;
-                // If CF finish has been canceled then produceLine() returns false and we will end the loop.
                 produceLine(auxline, linepos);
                 linepos = 0;
             }
             else if (linepos == MAX_LINE_SIZE -1) {
-                // If CF finish has been canceled then produceLine() returns false and we will end the loop.
                 produceLine(auxline, linepos);
                 linepos = 0;
             }
             else auxline[linepos++] = buffer[bufpos++];
         }
-        int lastLinePos = linepos;
-        if(!isCancelled()) readBytes(asyncFile, position, buffer, 0, buffer.length, (err, res) -> {
+        int lastLinePos = linepos; // we need a final variable captured in the next lambda
+        if(!isCancelled()) readBytes(asyncFile, position, buffer, buffer.length, (err, res) -> {
             if(isCancelled())
                 return;
             if(err != null) {
@@ -123,8 +123,6 @@ public abstract class AbstractAsyncFileReaderLines {
                 close(asyncFile);
                 return;
             }
-            long next = position;
-            if (res > 0) next += res;
             if (res <= 0) {
                 // needed for last line that doesn't end with LF
                 if (lastLinePos > 0) {
@@ -132,9 +130,10 @@ public abstract class AbstractAsyncFileReaderLines {
                 }
                 // Following it will invoke onComplete()
                 close(asyncFile);
-                return;
             }
-            else readLines(asyncFile, next, 0, res, buffer, auxline, lastLinePos);
+            else {
+                readLines(asyncFile, position + res, 0, res, buffer, auxline, lastLinePos);
+            }
         });
     }
     /**
@@ -142,32 +141,31 @@ public abstract class AbstractAsyncFileReaderLines {
      */
     private static final void readBytes(
         AsynchronousFileChannel asyncFile,
-        long position,
-        byte[] data,
-        int ofs,
+        long position, // current read or write position in file
+        byte[] data,   // buffer for current producing line
         int size,
         ObjIntConsumer<Throwable> completed)
     {
         if (completed == null)
             throw new InvalidParameterException("callback can't be null!");
-        if (size + ofs > data.length)
-            size = data.length - ofs;
+        if (size > data.length)
+            size = data.length;
         if (size ==0) {
             completed.accept(null, 0);
             return;
         }
-        ByteBuffer buf = ByteBuffer.wrap(data, ofs, size);
+        ByteBuffer buf = ByteBuffer.wrap(data, 0, size);
         CompletionHandler<Integer,Object> readCompleted =
-                new CompletionHandler<Integer,Object>() {
-                    @Override
-                    public void completed(Integer result, Object attachment) {
-                        completed.accept(null, result);
-                    }
-                    @Override
-                    public void failed(Throwable exc, Object attachment) {
-                        completed.accept(exc, 0);
-                    }
-                };
+            new CompletionHandler<>() {
+                @Override
+                public void completed(Integer result, Object attachment) {
+                    completed.accept(null, result);
+                }
+                @Override
+                public void failed(Throwable exc, Object attachment) {
+                    completed.accept(exc, 0);
+                }
+            };
         asyncFile.read(buf, position, null, readCompleted);
     }
 

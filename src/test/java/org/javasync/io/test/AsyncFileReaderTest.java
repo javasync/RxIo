@@ -419,6 +419,21 @@ public class AsyncFileReaderTest {
         assertEquals("Hokosa", common.getKey());
         assertEquals(183, common.getValue().intValue());
     }
+
+    /**
+     * Trying to reproduce an erroneous behavior where takeWhile tries
+     * to terminate upstream subscription before it exist.
+     */
+    @Test
+    public void readLinesAndImmediatelyInterrupt() throws URISyntaxException {
+        Path file = Paths.get(WIZARD.toURI());
+        AsyncFiles
+            .asyncQuery(file)
+            .filter(line -> !line.isEmpty())
+            .takeWhile(line -> false) // Will finish on first line
+            .blockingSubscribe();
+    }
+
     @Test
     public void readLinesFromLargeFileAsyncQueryAndCountWords() throws URISyntaxException {
         final int  MIN = 5;
