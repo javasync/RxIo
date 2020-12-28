@@ -264,9 +264,9 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.jayield</groupId>
+            <groupId>com.tinyield</groupId>
             <artifactId>jayield</artifactId>
-            <version>1.3.0</version>
+            <version>1.5.1</version>
         </dependency>
     </dependencies>
 </project>
