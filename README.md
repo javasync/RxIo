@@ -1,8 +1,8 @@
 # RxIo
 
 [![Build Status](https://sonarcloud.io/api/project_badges/measure?project=com.github.javasync%3ARxIo&metric=alert_status)](https://sonarcloud.io/dashboard?id=com.github.javasync%3ARxIo)
-[![Maven Central Version](https://img.shields.io/maven-central/v/com.github.javasync/RxIo.svg)](https://search.maven.org/#search%7Cga%7C1%7Ca%3A%22RxIo%22)
 [![Coverage Status](https://sonarcloud.io/api/project_badges/measure?project=com.github.javasync%3ARxIo&metric=coverage)](https://sonarcloud.io/dashboard?id=com.github.javasync%3ARxIo)
+[![Maven Central Version](https://img.shields.io/maven-central/v/com.github.javasync/RxIo.svg)](https://search.maven.org/artifact/com.github.javasync/RxIo)
 
 The [`AsyncFiles`](src/main/java/org/javaync/io/AsyncFiles.java) class allows Java
 applications to easily read/write files asynchronously and without blocking.
@@ -31,7 +31,7 @@ simply add this dependency:
 <dependency> 
     <groupId>com.github.javasync</groupId>
     <artifactId>RxIo</artifactId>
-    <version>1.1.7</version>
+    <version>1.2.1</version>
 </dependency>
 ```
 
@@ -39,9 +39,7 @@ simply add this dependency:
 <td>
 
 ```groovy
-dependencies {
-  implementation 'com.github.javasync:RxIo:1.1.7'
-}
+implementation 'com.github.javasync:RxIo:1.2.1'
 ```
 
 </td>
@@ -55,12 +53,35 @@ dependencies {
 <td>
 
 ```java
+String path = "input.txt";
+AsyncFiles
+  .asyncQuery(path) // printing all lines from input.txt
+  .subscribe((line, err) -> out.println(line)) // lack check err
+  .join(); // block if you want to wait for completion
+```
+    
+</td>
+<td>
+
+```java
+Path path = Paths.get("input.txt");
+Files
+  .lines(path) // printing all lines from input.txt
+  .forEach(out::println)
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+```java
 
 Path path = Paths.get("output.txt")
 List<String> data = asList("super", "brave", "isel", "gain");
 AsyncFiles
-    .write(path, data)
-    .join(); // block if you want to wait for write completion
+  .write(path, data) // writing lines to output.txt
+  .join(); // block if you want to wait for completion
 ```
 
 </td>
@@ -68,7 +89,7 @@ AsyncFiles
 
 ```java
 /**
- *  Writing lines into a file
+ *  Writing lines to output.txt
  */
 Path path = Paths.get("output.txt")
 List<String> data = asList("super", "brave", "isel", "gain");
@@ -84,9 +105,9 @@ Files.write(path, data);
 Path in = Paths.get("input.txt");
 Path out = Paths.get("output.txt");
 AsyncFiles
-        .readAllBytes(in)
-        .thenCompose(bytes -> AsyncFiles.writeBytes(out, bytes))
-        .join(); // block if you want to wait for write completion
+  .readAllBytes(in)
+  .thenCompose(bytes -> AsyncFiles.writeBytes(out, bytes))
+  .join(); // block if you want to wait for completion
 ```
 
 </td>
@@ -104,37 +125,28 @@ Files.write(out, bytes);
 
 </td>
 </tr>
-<tr>
-<td>
-
-```java
-/**
- * Printing all lines from a file
- */
-String path = "input.txt";
-AsyncFiles
-    .lines(path)
-    .subscribe(doOnNext(out::println));
-```
-    
-</td>
-<td>
-
-```java
-
-
-
-Path path = Paths.get("input.txt");
-Files
-    .lines(path)
-    .forEach(out::println)
-```
-
-</td>
-</tr>
 </table>
 
-The [`AsyncFiles::lines()`](src/main/java/org/javaync/io/AsyncFiles.java#L63)
+The [`AsyncFiles::asyncQuery()`](src/main/java/org/javaync/io/AsyncFiles.java#L60)
+returns an `AsyncQuery` that allows asynchronous subscription and chaining intermediate operations
+such as `filter`, `map` and others.
+In the following example we show how to print all words of a gutenberg.org file content without repetitions:
+```java
+AsyncFiles
+    .asyncQuery(file)
+    .filter(line -> !line.isEmpty())                   // Skip empty lines
+    .skip(14)                                          // Skip gutenberg header
+    .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+    .flatMapMerge(line -> AsyncQuery.of(line.split("\\W+")))
+    .distinct()
+    .subscribe((word, err) -> {
+        if(err != null) err.printStackTrace();
+        else out.println(word);
+    })
+    .join(); // block if you want to wait for completion
+```
+
+Alternatively, the [`AsyncFiles::lines()`](src/main/java/org/javaync/io/AsyncFiles.java#L84)
 returns a reactive [`Publisher`](https://www.reactive-streams.org/reactive-streams-1.0.0-javadoc/org/reactivestreams/Publisher.html)
 which is compatible with Reactor or RxJava streams. 
 Thus we can use their utility methods to easily operate on the result of `AsyncFiles::lines()`.
@@ -144,7 +156,13 @@ we can rewrite the previous sample as:
 
 ```java
 Flux
-    .from(AsyncFiles.lines(path))
+    .from(AsyncFiles.lines(file))
+    .filter(line -> !line.isEmpty())                   // Skip empty lines
+    .skip(14)                                          // Skip gutenberg header
+    .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+    .flatMap(line -> Flux.fromArray(line.split("\\W+")))
+    .distinct()
     .doOnNext(out::println)
+    .doOnError(Throwable::printStackTrace)
     .blockLast(); // block if you want to wait for completion
 ```

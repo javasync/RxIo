@@ -26,7 +26,6 @@
 package org.javasync.io.test;
 
 import io.reactivex.rxjava3.core.Observable;
-import org.javasync.util.Subscribers;
 import org.javaync.io.AsyncFiles;
 import org.jayield.AsyncQuery;
 import org.reactivestreams.Publisher;
@@ -56,12 +55,14 @@ import java.util.stream.Stream;
 import static io.reactivex.rxjava3.core.Observable.fromArray;
 import static java.lang.ClassLoader.getSystemResource;
 import static java.lang.System.lineSeparator;
+import static java.lang.System.out;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.Files.delete;
 import static java.util.Arrays.asList;
 import static java.util.Collections.max;
 import static java.util.Comparator.comparingInt;
 import static java.util.stream.Collectors.joining;
+import static org.javasync.util.Subscribers.doOnNext;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -74,6 +75,35 @@ public class AsyncFileReaderTest {
     static final String OUTPUT = "output.txt";
     static final URL METAMORPHOSIS = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
     static final URL WIZARD = getSystemResource("The-Wizard-by-Rider-Haggard.txt");
+
+
+    public void readLinesAndPrint() throws IOException, InterruptedException {
+        /**
+         * Arrange
+         */
+        List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
+        Path path = Paths.get(OUTPUT);
+        Files.write(path, expected);
+        CompletableFuture<?> cf = new CompletableFuture<>();
+        AsyncFiles
+            .lines(path) // printing all lines from input.txt
+            .subscribe(doOnNext(out::println)
+                .doOnComplete(() -> cf.complete(null))
+                .doOnSubscribe(sign -> sign.request(Long.MAX_VALUE)));
+        cf.join();
+    }
+    public void asynQueryLinesAndPrint() throws IOException, InterruptedException {
+        /**
+         * Arrange
+         */
+        List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
+        Path path = Paths.get(OUTPUT);
+        Files.write(path, expected);
+        AsyncFiles
+            .asyncQuery(path) // printing all lines from input.txt
+            .subscribe((line, err) -> out.println(line))
+            .join();
+    }
 
     @Test
     public void readLinesWith8BytesBufferToReactorFlux() throws IOException {
@@ -114,8 +144,7 @@ public class AsyncFileReaderTest {
             Iterator<String> iter = expected.iterator();
             AsyncFiles
                     .lines(4, OUTPUT)
-                    .subscribe(Subscribers
-                        .doOnNext(item -> {
+                    .subscribe(doOnNext(item -> {
                             if(p.isDone()) return;
                             String curr = iter.next();
                             assertEquals(curr, item);
@@ -204,8 +233,7 @@ public class AsyncFileReaderTest {
         CompletableFuture<Void> completed = new CompletableFuture<>();
         AsyncFiles
                 .lines(PATH.toString())
-                .subscribe(Subscribers
-                        .doOnNext(item -> {
+                .subscribe(doOnNext(item -> {
                             if(completed.isDone()) return;
                             String curr = expected.next();
                             assertEquals(curr, item);
@@ -233,8 +261,7 @@ public class AsyncFileReaderTest {
         CompletableFuture<Subscription> sign = new CompletableFuture<>();
         AsyncFiles
                 .lines(PATH.toString())
-                .subscribe(Subscribers
-                        .doOnNext(item -> {
+                .subscribe(doOnNext(item -> {
                             if(completed.isDone()) return;
                             String curr = expected.next();
                             assertEquals(curr, item);
@@ -258,8 +285,7 @@ public class AsyncFileReaderTest {
         int [] count = {0};
         AsyncFiles
                 .lines(64, Paths.get(WIZARD.toURI()))
-                .subscribe(Subscribers
-                        .doOnNext(item -> {
+                .subscribe(doOnNext(item -> {
                             count[0]++;
                             if(count[0] > 400){
                                 subscribed.join().cancel();
@@ -273,7 +299,7 @@ public class AsyncFileReaderTest {
                         .doOnError(err -> completed.completeExceptionally(err)));
         completed.join();
         Thread.sleep(500); // Wait a little to check that no further signals were emitted in the meanwhile.
-        assertEquals(401, count[0]);
+        assertEquals(count[0], 401);
     }
 
     @Test
@@ -295,8 +321,7 @@ public class AsyncFileReaderTest {
         AtomicInteger prevRequest = new AtomicInteger();
         AsyncFiles
                 .lines(PATH.toString())
-                .subscribe(Subscribers
-                        .doOnNext(item -> {
+                .subscribe(doOnNext(item -> {
                             if(completed.isDone()) return;
                             String curr = expected.next();
                             assertEquals(curr, item);
@@ -416,8 +441,8 @@ public class AsyncFileReaderTest {
             .doOnNext(w -> words.merge(w, 1, Integer::sum))
             .blockingSubscribe();
         Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
-        assertEquals("Hokosa", common.getKey());
-        assertEquals(183, common.getValue().intValue());
+        assertEquals(common.getKey(), "Hokosa");
+        assertEquals(common.getValue().intValue(), 183);
     }
 
     /**
@@ -450,9 +475,48 @@ public class AsyncFileReaderTest {
             .onNext((w, err) -> words.merge(w, 1, Integer::sum))
             .blockingSubscribe();
         Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
-        assertEquals("Hokosa", common.getKey());
-        assertEquals(183, common.getValue().intValue());
+        assertEquals(common.getKey(), "Hokosa");
+        assertEquals(common.getValue().intValue(), 183);
     }
+
+    @Test
+    public void readLinesFromLargeFileAsyncQueryAndCountDistinctWords() throws URISyntaxException {
+        Path file = Paths.get(WIZARD.toURI());
+        int[] count = {0};
+        AsyncFiles
+            .asyncQuery(file)
+            .filter(line -> !line.isEmpty())                   // Skip empty lines
+            .skip(14)                                          // Skip gutenberg header
+            .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+            .flatMapMerge(line -> AsyncQuery.of(line.split("\\W+")))
+            .distinct()
+            .onNext((word, err) -> { if(err == null) count[0]++; })
+            .onNext((word, err) -> {
+                if(err != null) err.printStackTrace();
+                // else out.println(word);
+            })
+            .blockingSubscribe();
+        assertEquals(count[0], 5206);
+    }
+
+    @Test
+    public void readLinesFromLargeFileAsyncQueryAndCountDistinctWordsWithFlux() throws URISyntaxException {
+        Path file = Paths.get(WIZARD.toURI());
+        int[] count = {0};
+        Flux
+            .from(AsyncFiles.lines(file))
+            .filter(line -> !line.isEmpty())                   // Skip empty lines
+            .skip(14)                                          // Skip gutenberg header
+            .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
+            .flatMap(line -> Flux.fromArray(line.split("\\W+")))
+            .distinct()
+            .doOnNext(word -> count[0]++ )
+            // .doOnNext(out::println)
+            .doOnError(Throwable::printStackTrace)
+            .blockLast();
+        assertEquals(count[0], 5206);
+    }
+
 
     /**
      * Despite this test being very similar to the previous one it suppresses the takeWhile()
@@ -474,7 +538,7 @@ public class AsyncFileReaderTest {
             .onNext((w, err) -> words.merge(w, 1, Integer::sum))
             .blockingSubscribe();
         Map.Entry<String, ? extends Number> common = max(words.entrySet(), comparingInt(e -> e.getValue().intValue()));
-        assertEquals("Hokosa", common.getKey());
-        assertEquals(183, common.getValue().intValue());
+        assertEquals(common.getKey(), "Hokosa");
+        assertEquals(common.getValue().intValue(), 183);
     }
 }
