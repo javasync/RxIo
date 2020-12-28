@@ -162,7 +162,6 @@ Flux
     .takeWhile(line -> !line.contains("*** END OF "))  // Skip gutenberg footnote
     .flatMap(line -> Flux.fromArray(line.split("\\W+")))
     .distinct()
-    .doOnNext(word -> count[0]++ )
     .doOnNext(out::println)
     .doOnError(Throwable::printStackTrace)
     .blockLast(); // block if you want to wait for completion
