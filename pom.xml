@@ -49,8 +49,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.9</maven.compiler.source>
         <maven.compiler.target>1.9</maven.compiler.target>
-        <kotlin.version>1.3.72</kotlin.version>
-        <kotlinx.version>1.3.7</kotlinx.version>
+        <kotlin.version>1.6.21</kotlin.version>
+        <kotlinx.version>1.6.4</kotlinx.version>
     </properties>
     <build>
         <plugins>

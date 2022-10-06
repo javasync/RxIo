@@ -23,7 +23,7 @@ class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Subscrib
                 val sub = AsyncFileReaderFlow(this)
                 AsyncFiles.lines(file).subscribe(sub)
                 /**
-                 * Next awaitClose() is equivalent to continuation.invokeOnCancellation ans it is mandatory.
+                 * Next awaitClose() is equivalent to continuation.invokeOnCancellation and it is mandatory.
                  * Should be used in the end of callbackFlow block.
                  */
                 awaitClose {
@@ -55,7 +55,7 @@ class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Subscrib
          * maybe because something has been emitted after cancellation request.
          * It happens with takeWhile(). Maybe we can reproduce it a in small scenario.
          */
-        channel.offer(line)
+        channel.trySend(line)
         // channel.sendBlocking(line)
     }
 }
