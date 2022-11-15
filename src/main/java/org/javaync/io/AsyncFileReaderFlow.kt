@@ -1,17 +1,13 @@
 package org.javaync.io
 
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.sendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import org.reactivestreams.Subscriber
 import org.reactivestreams.Subscription
-import java.nio.channels.AsynchronousFileChannel
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 
 class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Subscriber<String> {
 
@@ -19,7 +15,7 @@ class AsyncFileReaderFlow(private val channel: ProducerScope<String>) : Subscrib
 
     companion object {
         @JvmStatic fun lines(file: Path) : Flow<String> =
-            callbackFlow<String> {
+            callbackFlow {
                 val sub = AsyncFileReaderFlow(this)
                 AsyncFiles.lines(file).subscribe(sub)
                 /**

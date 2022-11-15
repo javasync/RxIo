@@ -158,7 +158,7 @@ public class AsyncFiles {
     }
 
     /**
-     * Reads the file from the beginning using an AsyncFileChannel
+     * Reads the file from the beginning using an {@link AsynchronousFileChannel}
      * with a ByteBuffer of {@link AbstractAsyncFileReaderLines#BUFFER_SIZE BUFFER_SIZE} capacity.
      * It automatically closes the underlying AsyncFileChannel
      * when read is complete.
