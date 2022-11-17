@@ -92,18 +92,6 @@ public class AsyncFileReaderTest {
                 .doOnSubscribe(sign -> sign.request(Long.MAX_VALUE)));
         cf.join();
     }
-    public void asynQueryLinesAndPrint() throws IOException, InterruptedException {
-        /**
-         * Arrange
-         */
-        List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        Path path = Paths.get(OUTPUT);
-        Files.write(path, expected);
-        AsyncFiles
-            .asyncQuery(path) // printing all lines from input.txt
-            .subscribe((line, err) -> out.println(line))
-            .join();
-    }
 
     @Test
     public void readLinesWith8BytesBufferToReactorFlux() throws IOException {

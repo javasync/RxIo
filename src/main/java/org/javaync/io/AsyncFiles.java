@@ -57,6 +57,10 @@ public class AsyncFiles {
     private AsyncFiles() {
     }
 
+    public static AsyncQuery<String> asyncQuery(String file) {
+        return asyncQuery(Paths.get(file));
+    }
+    
     public static AsyncQuery<String> asyncQuery(Path file) {
         return new AsyncFileQuery(file);
     }
@@ -187,6 +191,10 @@ public class AsyncFiles {
         return readAllBytes(file, AbstractAsyncFileReaderLines.BUFFER_SIZE);
     }
 
+    public static CompletableFuture<byte[]> readAllBytes(String file) {
+        return readAllBytes(Paths.get(file));
+    }
+
     /**
      * Reads all bytes from the beginning of the file
      * using an AsyncFileChannel with a ByteBuffer of
@@ -233,6 +241,14 @@ public class AsyncFiles {
         return writeBytes(path, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
+    public static CompletableFuture<Integer> writeBytes(
+            String file,
+            byte[] bytes)
+    {
+        return writeBytes(Paths.get(file), bytes);
+    }
+
+
     /**
      * Writes bytes to a file.
      * The options parameter specifies how the file is created or opened.
@@ -274,6 +290,14 @@ public class AsyncFiles {
     {
         return write(path, lines, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
+
+    public static CompletableFuture<Integer> write(
+            String file,
+            Iterable<? extends CharSequence> lines)
+    {
+        return write(Paths.get(file), lines);
+    }
+
 
     /**
      * Write lines of text to a file. Each line is a char sequence and
