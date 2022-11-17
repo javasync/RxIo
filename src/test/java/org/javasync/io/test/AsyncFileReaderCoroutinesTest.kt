@@ -4,14 +4,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import org.javasync.io.test.AsyncFileReaderTest.NEWLINE
 import org.javaync.io.AsyncFiles
+import org.javaync.io.lines
 import org.javaync.io.readAll
 import org.javaync.io.writeText
 import org.testng.Assert
 import org.testng.Assert.assertEquals
 import org.testng.Assert.assertFalse
 import org.testng.annotations.Test
-import java.io.IOException
-import java.net.URISyntaxException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -22,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.assertNotEquals
 
 @Test(singleThreaded = true)
-class AsyncFileReaderFlowTest {
+class AsyncFileReaderCoroutinesTest {
 
     @Test
     fun readLinesKotlinFlow() {
@@ -32,8 +31,8 @@ class AsyncFileReaderFlowTest {
             Files.write(output, source)
             val expected = source.iterator()
             runBlocking {
-                AsyncFiles
-                        .flow(output)
+                output
+                        .lines()
                         .collect {
                             assertEquals(expected.next(), it)
                         }
@@ -56,8 +55,8 @@ class AsyncFileReaderFlowTest {
          */
         runBlocking {
             var count = 0
-            AsyncFiles
-                    .flow(file)
+            file
+                    .lines()
                     .collect { assertEquals(expected.next(), it) }
         }
         assertFalse(expected.hasNext(), "Missing items not retrieved by lines subscriber!!")

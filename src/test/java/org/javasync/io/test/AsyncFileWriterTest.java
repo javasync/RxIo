@@ -44,7 +44,6 @@ import static java.nio.file.Files.lines;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
-
 @Test(singleThreaded=true)
 public class AsyncFileWriterTest {
 
@@ -54,7 +53,7 @@ public class AsyncFileWriterTest {
         final List<String> expected = Arrays.asList("super", "brave", "isel", "ole", "gain", "massive");
         try {
             AsyncFiles
-                    .write(Paths.get(PATH), expected)
+                    .write(PATH, expected)
                     .whenComplete((index, ex) -> {
                         if (ex != null) fail(ex.getMessage());
                     })
@@ -90,40 +89,6 @@ public class AsyncFileWriterTest {
                     .join();
         }finally {
             delete(Paths.get(OUTPUT));
-        }
-    }
-
-    @Test
-    public void readWriteTestAsyncForReadme() throws IOException, URISyntaxException {
-        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
-        Path in = Paths.get(FILE.toURI());
-        Path out = Paths.get("output3.txt");
-        try {
-            AsyncFiles
-                    .readAllBytes(in)
-                    .thenCompose(bytes -> AsyncFiles.writeBytes(out, bytes))
-                    .join();
-            byte[] expected = Files.readAllBytes(in);
-            byte[] actual = Files.readAllBytes(out);
-            assertEquals(expected, actual);
-        } finally {
-            delete(out);
-        }
-    }
-
-    @Test
-    public void readWriteTestSyncForReadme() throws IOException, URISyntaxException {
-        URL FILE = getSystemResource("Metamorphosis-by-Franz-Kafka.txt");
-        Path in = Paths.get(FILE.toURI());
-        Path out = Paths.get("output4.txt");
-        try {
-            byte[] data = Files.readAllBytes(in);
-            Files.write(out, data);
-            byte[] expected = Files.readAllBytes(in);
-            byte[] actual = Files.readAllBytes(out);
-            assertEquals(expected, actual);
-        } finally {
-            delete(out);
         }
     }
 }

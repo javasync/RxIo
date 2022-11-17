@@ -8,8 +8,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-import static java.nio.channels.AsynchronousFileChannel.open;
-
 public class AsyncFileQuery extends AsyncQuery<String> {
     private final Path file;
 
