@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.javasync</groupId>
     <artifactId>RxIo</artifactId>
-    <version>1.2.6-SNAPSHOT</version>
+    <version>1.2.7-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>
         Asynchronous non-blocking File Reader and Writer library for Java.
