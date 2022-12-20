@@ -31,6 +31,7 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.channels.NonWritableChannelException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -45,6 +46,8 @@ import java.util.stream.Stream;
 import static java.lang.ClassLoader.getSystemResource;
 import static java.nio.channels.AsynchronousFileChannel.open;
 import static java.nio.file.Files.delete;
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.WRITE;
 import static java.util.Arrays.asList;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
@@ -100,7 +103,7 @@ public class AsyncFilesFailures {
          */
         final Path OUTPUT = Paths.get("dummy1.txt");
         List<String> expected = asList("super", "brave", "isel", "ole", "gain", "massi", "tot");
-        Files.write(OUTPUT, expected, StandardOpenOption.CREATE);
+        Files.write(OUTPUT, expected, CREATE);
         /**
          * Act and Assert
          */
@@ -112,13 +115,14 @@ public class AsyncFilesFailures {
                 .subscribe(Subscribers
                         .doOnNext(item -> {
                             if(!done[0]) {
-                                openLock(OUTPUT);
+                                openLock(OUTPUT, CREATE);
                                 done[0] = true;
                             }
                         })
                         .doOnSubscribe(sign -> sign.request(Integer.MAX_VALUE))
                         .doOnError(err -> {
-                            assertTrue(err instanceof IOException);
+
+                            assertTrue(err instanceof NonWritableChannelException);
                             promise.complete(null);
                         }));
             promise.join();
@@ -137,7 +141,7 @@ public class AsyncFilesFailures {
                 assertNull(arr);
                 assertTrue(err instanceof CompletionException);
             });
-        openLock(path);
+        openLock(path, WRITE);
         try{
             p.join();
             fail("It should be completed exceptionally!");
@@ -150,8 +154,9 @@ public class AsyncFilesFailures {
         Stream<String> lines = Files.lines(Paths.get(METAMORPHOSIS.toURI()));
         Iterable<String> expected = () -> lines.iterator();
         try {
+            Files.createFile(OUTPUT);
+            openLock(OUTPUT, WRITE);
             CompletableFuture<Integer> p = AsyncFiles.write(OUTPUT, expected);
-            openLock(OUTPUT);
             p.join();
             fail("It should be completed exceptionally!");
         } catch (CompletionException e) {
@@ -165,7 +170,7 @@ public class AsyncFilesFailures {
     @Test
     public void concurrentBytesLinesOnOpen() throws IOException {
         final Path OUTPUT = Paths.get("dummy3.txt");
-        Files.write(OUTPUT, "ola".getBytes(), StandardOpenOption.CREATE);
+        Files.write(OUTPUT, "ola".getBytes(), CREATE);
         try {
             AsyncFiles
                 .writeBytes(OUTPUT, null)
@@ -184,7 +189,7 @@ public class AsyncFilesFailures {
     @Test
     public void concurrentWriteLinesOnOpen() throws IOException {
         final Path OUTPUT = Paths.get("dummy4.txt");
-        Files.write(OUTPUT, "ola".getBytes(), StandardOpenOption.CREATE);
+        Files.write(OUTPUT, "ola".getBytes(), CREATE);
         try {
             AsyncFiles
                 .write(OUTPUT, null)
@@ -222,9 +227,9 @@ public class AsyncFilesFailures {
         p.join();
     }
 
-    private static void openLock(Path output) {
+    private static void openLock(Path output, StandardOpenOption opt) {
         try {
-            open(output, StandardOpenOption.WRITE).lock().get();
+            open(output, opt).lock().get();
         } catch (InterruptedException | IOException | ExecutionException e) {
             throw new RuntimeException(e);
         }

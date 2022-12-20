@@ -51,9 +51,14 @@ suspend fun writeText(file: String, text: String) = Path(file).writeText(text)
  * Returns the final file index after the completion of the corresponding write operation.
  * If an I/O error occurs then it may complete exceptionally.
  */
-suspend fun Path.writeText(text: String): Int = AsyncFiles
-    .writeBytes(this, text.toByteArray(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+suspend fun Path.writeText(text: String): Int =
+    writeText(text, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)
+
+
+suspend fun Path.writeText(text: String, vararg opts: StandardOpenOption): Int = AsyncFiles
+    .writeBytes(this, text.toByteArray(), *opts)
     .await()
+
 
 suspend fun <T> CompletableFuture<T>.await(): T =
     suspendCoroutine<T> { cont: Continuation<T> ->
