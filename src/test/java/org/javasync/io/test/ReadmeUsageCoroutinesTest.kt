@@ -9,8 +9,6 @@ import org.javaync.io.writeText
 import org.testng.Assert
 import org.testng.annotations.Test
 import java.io.File
-import java.io.IOException
-import java.net.URISyntaxException
 import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.io.path.Path
@@ -30,7 +28,6 @@ class ReadmeUsageCoroutinesTest {
     }
 
     @Test
-    @Throws(IOException::class, URISyntaxException::class)
     fun readWriteCoroutinesAsyncForReadme() {
         val FILE = ClassLoader.getSystemResource("Metamorphosis-by-Franz-Kafka.txt")
         val source = Paths.get(FILE.toURI())
@@ -47,7 +44,6 @@ class ReadmeUsageCoroutinesTest {
     }
 
     @Test
-    @Throws(IOException::class, URISyntaxException::class)
     fun readWriteTestSyncForReadme() {
         val FILE = ClassLoader.getSystemResource("Metamorphosis-by-Franz-Kafka.txt")
         val source = Paths.get(FILE.toURI())

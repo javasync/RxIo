@@ -3,10 +3,7 @@ package org.javasync.io.test
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import org.javasync.io.test.AsyncFileReaderTest.NEWLINE
-import org.javaync.io.AsyncFiles
-import org.javaync.io.lines
-import org.javaync.io.readAll
-import org.javaync.io.writeText
+import org.javaync.io.*
 import org.testng.Assert
 import org.testng.Assert.assertEquals
 import org.testng.Assert.assertFalse
@@ -18,10 +15,51 @@ import java.util.*
 import java.util.Collections.max
 import java.util.Comparator.comparingInt
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.Path
 import kotlin.test.assertNotEquals
 
 @Test(singleThreaded = true)
 class AsyncFileReaderCoroutinesTest {
+
+    @Test
+    fun readFileTwiceWithInterleavedModification() {
+        /**
+         * Arrange
+         */
+        val init = listOf("super", "brave", "isel", "ole", "gain", "massi", "tot")
+        val file = Path("output5.txt")
+        Files.write(file, init)
+        /**
+         * Act and Assert
+         */
+        try {
+            runBlocking {
+                /**
+                 * Assert
+                 */
+                with(init.iterator()) { // expected
+                    file.readText().trim().lines().forEach {
+                        kotlin.test.assertEquals(next(), it)
+                    }
+                }
+                /**
+                 * Act - Remove 1 line
+                 */
+                file.writeText((init - "isel").joinToString("\n"))
+                /**
+                 * Assert
+                 */
+                with((init - "isel").iterator()) { // expected
+                    file.readText().trim().lines().forEach {
+                        kotlin.test.assertEquals(next(), it)
+                    }
+                }
+            }
+        } finally {
+            Files.delete(file)
+        }
+    }
+
 
     @Test
     fun readLinesKotlinFlow() {
